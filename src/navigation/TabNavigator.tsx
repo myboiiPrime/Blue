@@ -1,66 +1,79 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, StyleSheet } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useTheme } from '../utils/theme';
+import { Text, View, StyleSheet } from 'react-native';
 
-// Import your screens
-import HomeScreen from '../../app/home';
-import MarketScreen from '../../app/market';
-import ProfileScreen from '../../app/profile';
+import HomeScreen from '../screens/HomeScreen';
 import WatchlistScreen from '../screens/WatchlistScreen';
+import MarketScreen from '../screens/MarketScreen';
 import TradingScreen from '../screens/TradingScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-const TabNavigator = () => {
-  const theme = useTheme();
-  
+function TabNavigator() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName = 'help-circle';
+          let iconText;
 
           if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
+            iconText = '🏠';
           } else if (route.name === 'Watchlist') {
-            iconName = focused ? 'star' : 'star-outline';
+            iconText = '⭐';
           } else if (route.name === 'Market') {
-            iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+            iconText = '📈';
           } else if (route.name === 'Trading') {
-            iconName = focused ? 'trending-up' : 'trending-up-outline';
-          } else if (route.name === 'Profile') {
-            iconName = focused ? 'person' : 'person-outline';
+            iconText = '🔄';
+          } else if (route.name === 'Asset') {
+            iconText = '💼';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return (
+            <View style={styles.tabIconContainer}>
+              <Text style={{ fontSize: size, color }}>{iconText}</Text>
+            </View>
+          );
         },
-        tabBarActiveTintColor: theme.colors.tabBarActive,
-        tabBarInactiveTintColor: theme.colors.tabBarInactive,
+        tabBarActiveTintColor: '#007AFF',
+        tabBarInactiveTintColor: '#8E8E93',
         tabBarStyle: {
-          backgroundColor: theme.colors.tabBarBackground,
-          borderTopColor: theme.colors.border,
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 1,
+          borderTopColor: '#E5E5EA',
+          height: 84,
+          paddingBottom: 20,
+          paddingTop: 8,
         },
-        headerShown: false,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+          marginTop: 4,
+        },
+        headerStyle: {
+          backgroundColor: '#FFFFFF',
+        },
+        headerTitleStyle: {
+          fontSize: 18,
+          fontWeight: '600',
+          color: '#1C1C1E',
+        },
+        headerTintColor: '#007AFF',
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Watchlist" component={WatchlistScreen} />
       <Tab.Screen name="Market" component={MarketScreen} />
       <Tab.Screen name="Trading" component={TradingScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Asset" component={ProfileScreen} />
     </Tab.Navigator>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  text: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  tabIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

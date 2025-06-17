@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import { useSettings } from '../src/context/SettingsContext';
-import { userService, userStockService } from '../src/services/api';
+import { useSettings } from '../context/SettingsContext';
+import { userService, userStockService, UserProfile, Portfolio } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function Profile({ navigation }) {
+export default function ProfileScreen({ navigation }) {
   const { settings } = useSettings();
-  const [userProfile, setUserProfile] = useState(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [portfolioStats, setPortfolioStats] = useState({
     portfolioValue: 0,
     stocksOwned: 0,
@@ -15,7 +15,6 @@ export default function Profile({ navigation }) {
   const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    // Fetch user profile data when component mounts
     fetchUserData();
   }, []);
   
@@ -29,13 +28,17 @@ export default function Profile({ navigation }) {
       
       // Fetch portfolio data
       const portfolioResponse = await userStockService.getUserPortfolio();
-      const portfolio = portfolioResponse.data;
+      const portfolio = portfolioResponse.data?.data || portfolioResponse.data || [];
       
-      // Calculate portfolio stats
+      // Calculate portfolio stats from the array of stocks
+      const totalValue = Array.isArray(portfolio) 
+        ? portfolio.reduce((sum, stock) => sum + (stock.currentValue || 0), 0)
+        : 0;
+      
       setPortfolioStats({
-        portfolioValue: portfolio.totalValue || 0,
-        stocksOwned: portfolio.stocks?.length || 0,
-        completedTrades: portfolio.completedTrades || 0
+        portfolioValue: totalValue,
+        stocksOwned: Array.isArray(portfolio) ? portfolio.length : 0,
+        completedTrades: 0 // This field doesn't exist in backend
       });
       
     } catch (error) {

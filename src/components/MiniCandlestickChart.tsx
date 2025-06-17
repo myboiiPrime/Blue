@@ -1,120 +1,130 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, View, Animated, Dimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { CandlestickData, TimeRange } from '../services/api';
 
 interface MiniCandlestickChartProps {
   width?: number;
   height?: number;
   opacity?: number;
-  trend?: 'up' | 'down' | 'neutral';
+  data: CandlestickData[];
+  symbol?: string;
+  timeRange?: TimeRange;
+  onError?: (error: Error) => void;
+}
+
+interface ProcessedCandle {
+  isUp: boolean;
+  bodyHeight: number;
+  wickHeight: number;
+  bodyTopPosition: number;
+  wickTopPosition: number;
+  originalData: CandlestickData;
 }
 
 const MiniCandlestickChart: React.FC<MiniCandlestickChartProps> = ({ 
   width = 80, 
   height = 40, 
   opacity = 0.8,
-  trend = 'neutral'
+  data = [],
+  symbol = '',
+  timeRange = '1day',
+  onError
 }) => {
-  // Smaller candlesticks for mini chart
-  const CANDLE_WIDTH = 4;
+  const CANDLE_WIDTH = 2;
   const CANDLE_SPACING = 1;
   const CANDLES_PER_CHART = Math.floor(width / (CANDLE_WIDTH + CANDLE_SPACING));
   
-  // Simplify the state to avoid potential issues
-  const [candlesticks, setCandlesticks] = useState<Array<{
-    isUp: boolean;
-    bodyHeight: number;
-    wickHeight: number;
-    bodyTopPosition: number;
-    wickTopPosition: number;
-  }>>([]);
-  
-  const scrollX = useRef(new Animated.Value(0)).current;
-  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const [candlesticks, setCandlesticks] = useState<ProcessedCandle[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Generate initial candlesticks with pre-calculated values
+  // Process real data into display format
   useEffect(() => {
-    const initialCandlesticks = generateCandlesticks(CANDLES_PER_CHART + 5);
-    setCandlesticks(initialCandlesticks);
-  }, []);
+    if (data.length > 0) {
+      const processed = processRealData(data);
+      setCandlesticks(processed);
+      setCurrentIndex(0);
+    }
+  }, [data, height]);
 
-  // Start the animation
+  // Real-time update simulation (move through historical data)
   useEffect(() => {
     if (candlesticks.length === 0) return;
     
-    // Reset position
-    scrollX.setValue(0);
+    // Clear existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
     
-    // Create animation - faster for mini chart
-    const animation = Animated.loop(
-      Animated.timing(scrollX, {
-        toValue: -((CANDLE_WIDTH + CANDLE_SPACING) * CANDLES_PER_CHART),
-        duration: 15000, // Faster animation for mini chart
-        useNativeDriver: true,
-      })
-    );
+    // Update interval based on time range
+    const updateInterval = timeRange === '1day' ? 5000 : // 5 seconds for 1day
+                          timeRange === '1week' ? 3000 : // 3 seconds for 1week
+                          2000; // 2 seconds for 30days
     
-    // Store reference and start
-    animationRef.current = animation;
-    animation.start();
+    intervalRef.current = setInterval(() => {
+      setCurrentIndex(prev => {
+        const maxIndex = Math.max(0, candlesticks.length - CANDLES_PER_CHART);
+        return prev >= maxIndex ? 0 : prev + 1;
+      });
+    }, updateInterval);
     
     return () => {
-      if (animationRef.current) {
-        animationRef.current.stop();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
       }
     };
-  }, [candlesticks]);
+  }, [candlesticks, timeRange]);
 
-  // Generate new random candlesticks with pre-calculated display values
-  const generateCandlesticks = (count: number) => {
-    const sticks = [];
-    const chartHeight = height * 0.8; // Use 80% of the height for the chart
+  // Process real candlestick data for display
+  const processRealData = (data: CandlestickData[]): ProcessedCandle[] => {
+    if (data.length === 0) return [];
     
-    // Bias the random generation based on the trend prop
-    const upProbability = trend === 'up' ? 0.7 : trend === 'down' ? 0.3 : 0.5;
+    // Find min and max for scaling
+    const allPrices = data.flatMap(d => [d.open, d.high, d.low, d.close]);
+    const minPrice = Math.min(...allPrices);
+    const maxPrice = Math.max(...allPrices);
+    const priceRange = maxPrice - minPrice || 1;
     
-    for (let i = 0; i < count; i++) {
-      // Generate candlestick with trend bias
-      const isUp = Math.random() < upProbability;
-      const bodyHeight = Math.max(2, Math.random() * 8); // Smaller bodies
-      const wickHeight = bodyHeight + Math.random() * 6; // Smaller wicks
+    const chartHeight = height * 0.8;
+    const marginTop = height * 0.1;
+    
+    return data.map(candle => {
+      const isUp = candle.close >= candle.open;
       
-      // Center in the middle of the chart vertically
-      const middleOffset = (height / 2) - (chartHeight / 2);
-      const wickTopPosition = middleOffset + Math.random() * (chartHeight - wickHeight);
-      const bodyTopPosition = wickTopPosition + Math.random() * 3;
+      // Scale prices to chart height
+      const scalePrice = (price: number) => {
+        return marginTop + ((maxPrice - price) / priceRange) * chartHeight;
+      };
       
-      sticks.push({
+      const openY = scalePrice(candle.open);
+      const closeY = scalePrice(candle.close);
+      const highY = scalePrice(candle.high);
+      const lowY = scalePrice(candle.low);
+      
+      const bodyTop = Math.min(openY, closeY);
+      const bodyHeight = Math.max(1, Math.abs(closeY - openY));
+      const wickTop = highY;
+      const wickHeight = lowY - highY;
+      
+      return {
         isUp,
         bodyHeight,
         wickHeight,
-        bodyTopPosition,
-        wickTopPosition
-      });
-    }
-    
-    return sticks;
+        bodyTopPosition: bodyTop,
+        wickTopPosition: wickTop,
+        originalData: candle
+      };
+    });
   };
 
-  // Add new candlesticks as animation progresses
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCandlesticks(prev => {
-        // Remove one from the beginning and add one to the end
-        const newCandles = [...prev.slice(1), ...generateCandlesticks(1)];
-        return newCandles;
-      });
-    }, 500); // Faster update interval for mini chart
-    
-    return () => clearInterval(interval);
-  }, []);
+  // Get visible candlesticks
+  const visibleCandlesticks = candlesticks.slice(currentIndex, currentIndex + CANDLES_PER_CHART);
 
   return (
     <View style={[styles.container, { width, height, opacity }]}>
-      <Animated.View 
-        style={[styles.chartContainer, { transform: [{ translateX: scrollX }] }]}
-      >
-        {candlesticks.map((candle, index) => (
-          <View key={`candle-${index}`} style={styles.candlestickContainer}>
+      <View style={styles.chartContainer}>
+        {visibleCandlesticks.map((candle, index) => (
+          <View key={`candle-${currentIndex + index}`} style={[styles.candlestickContainer, { width: CANDLE_WIDTH, marginHorizontal: CANDLE_SPACING / 2 }]}>
             <View 
               style={[
                 styles.wick, 
@@ -130,7 +140,7 @@ const MiniCandlestickChart: React.FC<MiniCandlestickChartProps> = ({
             />
           </View>
         ))}
-      </Animated.View>
+      </View>
     </View>
   );
 };
@@ -144,11 +154,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: '100%',
     paddingHorizontal: 2,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
   },
   candlestickContainer: {
-    width: 4,
-    marginHorizontal: 1,
     height: '100%',
     position: 'relative',
   },
@@ -160,7 +169,7 @@ const styles = StyleSheet.create({
   },
   body: {
     position: 'absolute',
-    width: 4,
+    width: '100%',
     borderRadius: 1,
   },
   green: {

@@ -54,6 +54,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     }
   };
 
+  // Test function to bypass authentication
+  const handleTestLogin = async () => {
+    try {
+      // Set a dummy token for testing purposes
+      await AsyncStorage.setItem('token', 'test-token-for-development');
+      navigation.navigate('MainApp');
+    } catch (error) {
+      console.error('Test login error:', error);
+      Alert.alert('Error', 'Test login failed');
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -101,6 +113,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
           >
             <Text style={styles.buttonText}>
               {isLoading ? 'Signing in...' : 'Sign In'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Test Button for Development */}
+          <TouchableOpacity 
+            style={styles.testButton}
+            onPress={handleTestLogin}
+          >
+            <Text style={styles.testButtonText}>
+              🚀 Test Login (Skip Auth)
             </Text>
           </TouchableOpacity>
         </View>
@@ -182,6 +204,22 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  // New styles for test button
+  testButton: {
+    backgroundColor: '#F59E0B',
+    height: 45,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 15,
+    borderWidth: 2,
+    borderColor: '#D97706',
+  },
+  testButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
   footer: {
