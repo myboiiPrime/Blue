@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, FlatList, ActivityIndicator, Alert } from "react-native";
 import { useNavigation } from '@react-navigation/native';
-import CandlestickBackground from "../components/CandlestickBackground";
 import MiniCandlestickChart from "../components/MiniCandlestickChart";
 import { useTheme } from "../utils/theme";
 import { stockService, CandlestickData } from '../services/api';
@@ -13,7 +12,7 @@ interface MarketData {
   change: number;
   changePercent: number;
   volume: number;
-  chartData: number[];
+  chartData: CandlestickData[]; // Changed from number[] to CandlestickData[]
 }
 
 interface IndexData {
@@ -22,7 +21,7 @@ interface IndexData {
   change: number;
   changePercent: number;
   volume: string;
-  chartData: number[];
+  chartData: CandlestickData[]; // Changed from number[] to CandlestickData[]
 }
 
 export default function HomeScreen() {
@@ -41,10 +40,9 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       
-      // Fetch market overview data
       const marketOverview = await stockService.getMarketOverview();
+      console.log('API Response:', marketOverview); // Add this
       
-      // Process market data
       const processedMarketData: MarketData[] = [];
       
       for (const stockData of marketOverview) {
@@ -56,14 +54,14 @@ export default function HomeScreen() {
           const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
           const volume = parseInt(quote['06. volume']);
           
-          // Fetch historical data for chart (using default 1day)
+          // Fetch historical data for chart
           try {
             const historicalData = await stockService.getHistoricalData(symbol, '1day');
-            const chartData = historicalData.slice(-20).map(d => d.close); // Last 20 data points
+            const chartData = historicalData.slice(-20); // Keep full CandlestickData objects
             
             processedMarketData.push({
               symbol,
-              name: symbol, // You can add a mapping for full names
+              name: symbol,
               price,
               change,
               changePercent,
@@ -72,7 +70,6 @@ export default function HomeScreen() {
             });
           } catch (error) {
             console.error(`Error fetching chart data for ${symbol}:`, error);
-            // Add without chart data
             processedMarketData.push({
               symbol,
               name: symbol,
@@ -88,14 +85,15 @@ export default function HomeScreen() {
       
       setMarketData(processedMarketData);
       
-      // Create index data from major stocks (simulated indices)
+      // Create index data from major stocks
+      // Instead of static fallbacks, use dynamic defaults or skip creation
       if (processedMarketData.length >= 3) {
         const indices: IndexData[] = [
           {
             name: 'TECH INDEX',
-            value: processedMarketData[0]?.price * 10 || 1338.11,
-            change: processedMarketData[0]?.change * 10 || 22.62,
-            changePercent: processedMarketData[0]?.changePercent || 1.72,
+            value: processedMarketData[0]?.price * 10 || 0, // Use 0 instead of static
+            change: processedMarketData[0]?.change * 10 || 0,
+            changePercent: processedMarketData[0]?.changePercent || 0,
             volume: '21.0K bil',
             chartData: processedMarketData[0]?.chartData || []
           },
@@ -123,7 +121,7 @@ export default function HomeScreen() {
       console.error('Error fetching market data:', error);
       Alert.alert('Error', 'Failed to fetch market data. Please check your internet connection.');
       
-      // Set fallback data to show symbols
+      // Set fallback data
       const fallbackData: MarketData[] = [
         {
           symbol: 'AAPL',
@@ -188,23 +186,26 @@ export default function HomeScreen() {
 
   const renderIndexCard = ({ item }: { item: IndexData }) => (
     <View style={styles.indexCard}>
-      <View style={styles.indexInfo}>
-        <Text style={styles.indexName}>{item.name}</Text>
+      <View style={styles.indexHeader}>
+        <Text style={styles.indexSymbol}>{item.name}</Text>
         <Text style={styles.indexVolume}>{item.volume}</Text>
-        <Text style={styles.indexValue}>{item.value.toFixed(2)}</Text>
-        <Text style={[styles.indexChange, item.change >= 0 ? styles.positiveChange : styles.negativeChange]}>
-          {item.change >= 0 ? '+' : ''}{item.change.toFixed(2)} {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
-        </Text>
       </View>
-      <View style={styles.indexChart}>
-        {item.chartData.length > 0 && (
-          <MiniCandlestickChart 
-            data={item.chartData} 
-            width={80} 
-            height={60} 
-            color={item.change >= 0 ? "#10B981" : "#EF4444"}
-          />
-        )}
+      <View style={styles.indexMainContent}>
+        <View style={styles.indexValueSection}>
+          <Text style={styles.indexValue}>{item.value.toFixed(2)}</Text>
+          <Text style={[styles.indexChange, item.change >= 0 ? styles.positiveChange : styles.negativeChange]}>
+            {item.change >= 0 ? '+' : ''}{item.change.toFixed(2)} {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
+          </Text>
+        </View>
+        <View style={styles.indexChart}>
+          {item.chartData.length > 0 && (
+            <MiniCandlestickChart 
+              data={item.chartData} 
+              width={100} 
+              height={50}
+            />
+          )}
+        </View>
       </View>
     </View>
   );
@@ -233,29 +234,33 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.profileIcon}>
+        <TouchableOpacity style={styles.profileIcon}>
           <Text style={styles.profileIconText}>👤</Text>
-        </View>
-        <View style={styles.searchBar}>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.searchBar}>
           <Text style={styles.searchText}>🔍 Search</Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.headerIcons}>
           <View style={styles.supportBadge}>
             <Text style={styles.supportText}>Support</Text>
           </View>
-          <Text style={styles.headerIcon}>👆</Text>
-          <Text style={styles.headerIcon}>🔐</Text>
-          <View style={styles.notificationContainer}>
+          <TouchableOpacity>
+            <Text style={styles.headerIcon}>👆</Text>
+          </TouchableOpacity>
+          <TouchableOpacity>
+            <Text style={styles.headerIcon}>🔐</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.notificationContainer}>
             <Text style={styles.headerIcon}>🔔</Text>
             <View style={styles.notificationBadge}>
               <Text style={styles.notificationText}>10</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
       
@@ -372,6 +377,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
+    zIndex: 1000,
   },
   profileIcon: {
     width: 40,
@@ -432,6 +438,7 @@ const styles = StyleSheet.create({
     height: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1001,
   },
   notificationText: {
     color: '#FFFFFF',
@@ -497,84 +504,64 @@ const styles = StyleSheet.create({
   marketOverview: {
     marginTop: 16,
   },
-  timeRangeSelector: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 4,
-  },
-  timeRangeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  activeTimeRange: {
-    backgroundColor: '#007AFF',
-  },
-  timeRangeText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748B',
-  },
-  activeTimeRangeText: {
-    color: '#FFFFFF',
-  },
-  marketOverview: {
-    marginTop: 16,
-  },
   indexList: {
     paddingHorizontal: 16,
   },
   indexCard: {
-    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
     marginRight: 12,
-    width: 200,
+    width: 220,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
   },
-  indexInfo: {
-    flex: 1,
+  indexHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  indexName: {
+  indexSymbol: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1E293B',
-    marginBottom: 4,
   },
   indexVolume: {
     fontSize: 12,
     color: '#64748B',
-    marginBottom: 8,
+  },
+  indexMainContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  indexValueSection: {
+    flex: 1,
   },
   indexValue: {
-    fontSize: 20,
+    fontSize: 20, // Reduced from 24
     fontWeight: 'bold',
     color: '#1E293B',
     marginBottom: 4,
   },
   indexChange: {
-    fontSize: 14,
+    fontSize: 12, // Reduced from 14
     fontWeight: '600',
+  },
+  indexChart: {
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    marginLeft: 12,
   },
   positiveChange: {
     color: '#10B981',
   },
   negativeChange: {
     color: '#EF4444',
-  },
-  indexChart: {
-    justifyContent: 'center',
-    marginLeft: 12,
   },
   marketTabs: {
     flexDirection: 'row',
@@ -656,13 +643,13 @@ const styles = StyleSheet.create({
   },
   stockSymbolCell: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 12, // Reduced from 14
     fontWeight: 'bold',
     textAlign: 'left',
   },
   stockCell: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 12, // Reduced from 14
     textAlign: 'center',
     color: '#1E293B',
     fontWeight: '500',

@@ -20,7 +20,7 @@ interface StockWithChart extends Stock {
 export default function WatchlistScreen() {
   const [watchlistData, setWatchlistData] = useState<StockWithChart[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<TimeRange>('1day');
+  const [timeRange, setTimeRange] = useState<TimeRange>('1h'); // Changed from '1day' to '1h'
   const [marketData, setMarketData] = useState<{symbol: string, data: CandlestickData[]}[]>([]);
   
   useEffect(() => {
@@ -91,9 +91,9 @@ export default function WatchlistScreen() {
     }
   };
   
-  const handleTimeRangeChange = (newTimeRange: TimeRange) => {
-    setTimeRange(newTimeRange);
-  };
+  // const handleTimeRangeChange = (newTimeRange: TimeRange) => {
+  //   setTimeRange(newTimeRange);
+  // };
   
   if (loading) {
     return (
@@ -109,8 +109,8 @@ export default function WatchlistScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Your Stocks</Text>
         
-        {/* Time Range Selector */}
-        <View style={styles.timeRangeContainer}>
+        {/* Time Range Selector - Commented out for use in another page */}
+        {/* <View style={styles.timeRangeContainer}>
           {(['1day', '1week', '30days'] as TimeRange[]).map((range) => (
             <TouchableOpacity
               key={range}
@@ -128,7 +128,7 @@ export default function WatchlistScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </View> */}
       </View>
       
       <ScrollView style={styles.content}>
@@ -286,31 +286,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#64748B',
   },
-  timeRangeContainer: {
-    flexDirection: 'row',
-    marginTop: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 8,
-    padding: 2,
-  },
-  timeRangeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    alignItems: 'center',
-  },
-  timeRangeButtonActive: {
-    backgroundColor: '#FFFFFF',
-  },
-  timeRangeText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  timeRangeTextActive: {
-    color: '#1E3A8A',
-  },
+  // Time Range Selector styles - Commented out for use in another page
+  // timeRangeContainer: {
+  //   flexDirection: 'row',
+  //   marginTop: 10,
+  //   backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  //   borderRadius: 8,
+  //   padding: 2,
+  // },
+  // timeRangeButton: {
+  //   flex: 1,
+  //   paddingVertical: 8,
+  //   paddingHorizontal: 12,
+  //   borderRadius: 6,
+  //   alignItems: 'center',
+  // },
+  // timeRangeButtonActive: {
+  //   backgroundColor: '#FFFFFF',
+  // },
+  // timeRangeText: {
+  //   fontSize: 14,
+  //   fontWeight: '600',
+  //   color: 'rgba(255, 255, 255, 0.8)',
+  // },
+  // timeRangeTextActive: {
+  //   color: '#1E3A8A',
+  // },
   marketSection: {
     padding: 15,
     borderBottomWidth: 1,

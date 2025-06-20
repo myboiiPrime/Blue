@@ -9,6 +9,7 @@ import LoginScreen from './src/screens/Auth/LoginScreen';
 import RegisterScreen from './src/screens/Auth/RegisterScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import TabNavigator from './src/navigation/TabNavigator';
+import Portfoliointernal from './src/components/Portfoliointernal';
 
 // Import Settings Provider and ThemeProvider
 import { SettingsProvider } from './src/context/SettingsContext';
@@ -33,6 +34,7 @@ const App = () => {
             <Stack.Screen name="Register" component={RegisterScreen} />
             <Stack.Screen name="MainApp" component={TabNavigator} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="PortfolioInternal" component={Portfoliointernal} />
           </Stack.Navigator>
         </NavigationContainer>
       </ThemeProvider>

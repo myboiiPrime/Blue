@@ -1,8 +1,14 @@
-import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { userStockService, UserStockDto } from '../services/api';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types/navigation';
+import { useState, useEffect } from 'react';
+
+type MarketScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MarketScreen() {
+  const navigation = useNavigation<MarketScreenNavigationProp>();
   const [searchQuery, setSearchQuery] = useState('');
   const [portfolioData, setPortfolioData] = useState<UserStockDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +45,10 @@ export default function MarketScreen() {
   );
   
   const renderStockItem = ({ item }) => (
-    <TouchableOpacity style={styles.stockItem}>
+    <TouchableOpacity 
+      style={styles.stockItem}
+      onPress={() => navigation.navigate('PortfolioInternal', { symbol: item.symbol })}
+    >
       <View style={styles.stockInfo}>
         <Text style={styles.stockSymbol}>{item.symbol}</Text>
         <Text style={styles.stockName}>Qty: {item.quantity}</Text>
@@ -73,7 +82,7 @@ export default function MarketScreen() {
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search your stocks..."
+          placeholder="Search for stocks..."
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -88,7 +97,7 @@ export default function MarketScreen() {
         onRefresh={onRefresh}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No stocks in your portfolio</Text>
+            <Text style={styles.emptyText}>No stocks found</Text>
             <Text style={styles.emptySubtext}>Start trading to see your investments here</Text>
           </View>
         }
