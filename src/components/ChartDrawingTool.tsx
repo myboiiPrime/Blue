@@ -9,13 +9,18 @@ import {
   GestureDetector,
 } from 'react-native-gesture-handler';
 import { Svg, Line, Rect, Circle, Text as SvgText } from 'react-native-svg';
+import  Emoji  from "react-native-emoji";
 import ThemedText from './ThemedText';
+import EmojiPicker from './EmojiPicker';
+
 
 interface DrawingTool {
   type: 'line' | 'rectangle' | 'circle' | 'emoji';
   points: { x: number; y: number }[];
   color: string;
   emoji?: string;
+  startX?: number;
+  startY?: number;
 }
 
 interface ChartDrawingToolProps {
@@ -26,6 +31,7 @@ interface ChartDrawingToolProps {
   theme: any;
   showSidebar: boolean;
   onToggleSidebar: () => void;
+  style?: any; // Add this line
 }
 
 const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
@@ -35,51 +41,75 @@ const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
   initialDrawings = [],
   theme,
   showSidebar,
-  onToggleSidebar
+  onToggleSidebar,
+  style // Add this
 }) => {
-  const [selectedDrawingTool, setSelectedDrawingTool] = useState<'line' | 'rectangle' | 'circle' | 'emoji'>('line');
+  const [selectedDrawingTool, setSelectedDrawingTool] = useState<'line' | 'rectangle' | 'circle' | 'emoji' | null>(null);
   const [drawings, setDrawings] = useState<DrawingTool[]>(initialDrawings);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentDrawing, setCurrentDrawing] = useState<DrawingTool | null>(null);
+  
+  // Add these missing state variables
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [currentEmojiName, setCurrentEmojiName] = useState<string>('chart_with_upwards_trend');
 
-  // Handle drawing gestures
-  const onDrawingPanGestureEvent = (event: any) => {
-    const { x, y, state } = event;
-    
-    if (state === 'began') {
-      if (!isDrawing) {
-        setIsDrawing(true);
-        const newDrawing: DrawingTool = {
-          type: selectedDrawingTool,
-          points: [{ x, y }],
-          color: theme.colors.primary,
-          emoji: selectedDrawingTool === 'emoji' ? '📈' : undefined,
-        };
-        setCurrentDrawing(newDrawing);
-      }
-    } else if (state === 'active' && currentDrawing) {
-      setCurrentDrawing(prev => prev ? {
-        ...prev,
-        points: [prev.points[0], { x, y }]
-      } : null);
-    } else if (state === 'end' && currentDrawing) {
-      const finalDrawing = {
-        ...currentDrawing,
-        points: [currentDrawing.points[0], { x, y }]
-      };
-      const newDrawings = [...drawings, finalDrawing];
-      setDrawings(newDrawings);
-      setCurrentDrawing(null);
-      setIsDrawing(false);
-      onDrawingsChange?.(newDrawings);
-    }
+  // Add the missing handleEmojiSelect function
+  const handleEmojiSelect = (emojiName: string) => {
+    setCurrentEmojiName(emojiName);
+    setSelectedDrawingTool('emoji');
   };
 
   const drawingPanGesture = Gesture.Pan()
-    .onUpdate(onDrawingPanGestureEvent);
+    .onBegin((event) => {
+      if (!selectedDrawingTool) return;
+      
+      // Adjust coordinates to account for container offsets
+      const { x, y } = event;
+      const adjustedX = x;
+      const adjustedY = y; // Remove any container margin/padding offsets
+      
+      setIsDrawing(true);
+      const newDrawing: DrawingTool = {
+        type: selectedDrawingTool,
+        points: [{ x: adjustedX, y: adjustedY }],
+        color: theme.colors.primary,
+        emoji: selectedDrawingTool === 'emoji' ? currentEmojiName : undefined,
+      };
+      setCurrentDrawing(newDrawing);
+    })
+    .onUpdate((event) => {
+      if (currentDrawing) {
+        const { x, y } = event;
+        const adjustedX = x;
+        const adjustedY = y;
+        
+        setCurrentDrawing(prev => prev ? {
+          ...prev,
+          points: [prev.points[0], { x: adjustedX, y: adjustedY }]
+        } : null);
+      }
+    })
+    .onEnd((event) => {
+      if (currentDrawing) {
+        const { x, y } = event;
+        const adjustedX = x;
+        const adjustedY = y;
+        
+        const finalDrawing = {
+          ...currentDrawing,
+          points: [currentDrawing.points[0], { x: adjustedX, y: adjustedY }]
+        };
+        const newDrawings = [...drawings, finalDrawing];
+        setDrawings(newDrawings);
+        setCurrentDrawing(null);
+        setIsDrawing(false);
+        onDrawingsChange?.(newDrawings);
+      }
+    });
 
   const clearDrawings = () => {
     setDrawings([]);
+    setSelectedDrawingTool(null); // Reset to no tool selected
     onDrawingsChange?.([]);
   };
 
@@ -142,16 +172,17 @@ const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
       
       case 'emoji':
         return (
-          <SvgText
+          <foreignObject
             key={index}
-            x={point2.x}
-            y={point2.y}
-            fontSize="20"
-            textAnchor="middle"
-            alignmentBaseline="middle"
+            x={point2.x - 15}
+            y={point2.y - 15}
+            width="30"
+            height="30"
           >
-            {drawing.emoji || '📈'}
-          </SvgText>
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: 30, height: 30 }}>
+              <Emoji name={drawing.emoji || 'chart_with_upwards_trend'} style={{ fontSize: 20 }} />
+            </View>
+          </foreignObject>
         );
       
       default:
@@ -171,11 +202,12 @@ const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
     
     return (
       <View style={[styles.sidebar, { backgroundColor: theme.colors.cardBackground }]}>
+        // Around line 208:
         <TouchableOpacity
           style={styles.sidebarCloseButton}
           onPress={onToggleSidebar}
         >
-          <ThemedText>✕</ThemedText>
+          <ThemedText style={styles.closeButtonText}>✕</ThemedText>
         </TouchableOpacity>
         
         {tools.map((tool) => (
@@ -187,7 +219,13 @@ const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
                 backgroundColor: theme.colors.primary,
               },
             ]}
-            onPress={() => setSelectedDrawingTool(tool.type)}
+            onPress={() => {
+              if (tool.type === 'emoji') {
+                setShowEmojiPicker(true);
+              } else {
+                setSelectedDrawingTool(tool.type);
+              }
+            }}
           >
             <ThemedText style={styles.toolIcon}>{tool.icon}</ThemedText>
             <ThemedText style={styles.toolLabel}>{tool.label}</ThemedText>
@@ -205,20 +243,47 @@ const ChartDrawingTool: React.FC<ChartDrawingToolProps> = ({
     );
   };
 
+  // Update the main container to be transparent and properly positioned:
   return (
     <>
-      <GestureDetector gesture={drawingPanGesture}>
-        <View style={{ width, height, position: 'absolute' }}>
-          <Svg width={width} height={height}>
-            {/* Existing drawings */}
-            {drawings.map((drawing, index) => renderDrawing(drawing, index))}
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'transparent' }]}>
+        <GestureDetector gesture={drawingPanGesture}>
+          <Svg width={width} height={height} style={{ backgroundColor: 'transparent' }}>
+            {/* Render drawings */}
+            {drawings.filter(d => d.type !== 'emoji').map((drawing, index) => renderDrawing(drawing, index))}
             
             {/* Current drawing */}
-            {currentDrawing && renderDrawing(currentDrawing, -1, true)}
+            {currentDrawing && currentDrawing.type !== 'emoji' && renderDrawing(currentDrawing, -1, true)}
           </Svg>
-        </View>
-      </GestureDetector>
+        </GestureDetector>
+        
+        {/* Render emojis with higher z-index */}
+        {drawings
+          .filter(drawing => drawing.type === 'emoji')
+          .map((drawing, index) => (
+            <View
+              key={index}
+              style={[
+                styles.emojiContainer,
+                {
+                  left: (drawing.points[0]?.x || 0) - 15,
+                  top: (drawing.points[0]?.y || 0) - 15,
+                  zIndex: 3,
+                },
+              ]}
+            >
+              <Emoji name={drawing.emoji || 'chart_with_upwards_trend'} style={{ fontSize: 20 }} />
+            </View>
+          ))}
+      </View>
+      
       {renderSidebar()}
+      
+      <EmojiPicker
+        isVisible={showEmojiPicker}
+        onClose={() => setShowEmojiPicker(false)}
+        onEmojiSelect={handleEmojiSelect}
+      />
     </>
   );
 };
@@ -227,15 +292,10 @@ const styles = StyleSheet.create({
   sidebar: {
     position: 'absolute',
     right: 10,
-    top: 50,
-    width: 80,
-    borderRadius: 10,
-    padding: 10,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    top: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 8,
+    padding: 8,
     zIndex: 1000,
   },
   sidebarCloseButton: {
@@ -256,6 +316,29 @@ const styles = StyleSheet.create({
   toolLabel: {
     fontSize: 10,
     textAlign: 'center',
+  },
+  emojiPreview: {
+    alignItems: 'center',
+  },
+  emojiIcon: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  
+  emojiLabel: {
+    fontSize: 10,
+  },
+  emojiContainer: {
+    position: 'absolute',
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  // Add to StyleSheet:
+  closeButtonText: {
+  fontSize: 16,
+  fontWeight: 'bold',
   },
 });
 

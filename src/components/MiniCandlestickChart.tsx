@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { CandlestickData, TimeRange } from '../services/api';
 
@@ -21,7 +21,7 @@ interface ProcessedCandle {
   originalData: CandlestickData;
 }
 
-const MiniCandlestickChart: React.FC<MiniCandlestickChartProps> = ({ 
+const MiniCandlestickChart: React.FC<MiniCandlestickChartProps> = React.memo(({ 
   width = 80, 
   height = 40, 
   opacity = 0.8,
@@ -143,7 +143,7 @@ const MiniCandlestickChart: React.FC<MiniCandlestickChartProps> = ({
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

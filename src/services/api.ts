@@ -218,6 +218,7 @@ export const stockService: StockService = {
       console.log(`API Response for ${symbol}:`, response.data);
       
       // Check for API error messages
+      // Check for API error messages
       if (response.data['Error Message']) {
         throw new Error(`API Error: ${response.data['Error Message']}`);
       }

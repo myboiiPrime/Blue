@@ -1,3 +1,4 @@
+import React from 'react';
 import { useColorScheme } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
 

@@ -1,26 +1,24 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Dimensions,
   Animated,
+  PanResponder,
 } from 'react-native';
 import {
   Gesture,
-  GestureDetector,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import { Svg, Rect, Line, Path, Circle, Text as SvgText } from 'react-native-svg';
+import { Svg, Rect, Line, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../utils/theme';
-import ThemedText from './ThemedText';
-import ThemedButton from './ThemedButton';
 import { CandlestickData, TimeRange, stockService } from '../services/api';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-// Add import at the top
 import ChartDrawingTool from './ChartDrawingTool';
+import CandlestickBackground from './CandlestickBackground';
+import ThemedText from './ThemedText';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -42,7 +40,6 @@ interface DrawingTool {
   emoji?: string;
 }
 
-// Define the route params type
 type PortfolioInternalRouteProp = RouteProp<{
   PortfolioInternal: {
     symbol?: string;
@@ -53,14 +50,13 @@ interface PortfolioInternalProps {
   route?: PortfolioInternalRouteProp;
 }
 
-const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
+const PortfolioInternal: React.FC<PortfolioInternalProps> = () => {
   const theme = useTheme();
   const route = useRoute<PortfolioInternalRouteProp>();
   const navigation = useNavigation();
-  
-  // Get symbol from route params or default to VN30
   const initialSymbol = route.params?.symbol || 'VN30';
   
+  // State variables
   const [activeTab, setActiveTab] = useState<'Chart' | 'Summary'>('Chart');
   const [searchQuery, setSearchQuery] = useState(initialSymbol);
   const [selectedSymbol, setSelectedSymbol] = useState(initialSymbol);
@@ -78,7 +74,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
     foreignSellVolume: 29348662,
   });
   
-  // Chart dimensions and controls
+  // Chart controls
   const [chartHeight, setChartHeight] = useState(screenHeight * 0.4);
   const [volumeHeight, setVolumeHeight] = useState(screenHeight * 0.2);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -88,20 +84,58 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
   const [drawings, setDrawings] = useState<DrawingTool[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentDrawing, setCurrentDrawing] = useState<DrawingTool | null>(null);
-  
-  // Refs for gesture handling
-  // Remove the old refs
-  // const dividerPanRef = useRef<PanGestureHandler>(null);
-  // const chartPanRef = useRef<PanGestureHandler>(null);
-  // const chartPinchRef = useRef<PinchGestureHandler>(null);
-  // const drawingPanRef = useRef<PanGestureHandler>(null);
+  const [showDrawingSidebar, setShowDrawingSidebar] = useState(false);
 
-  // Load data on component mount
+  // Effects
   useEffect(() => {
     loadChartData();
+    loadStockData();
   }, [selectedSymbol, timeRange]);
 
-  // Handle divider drag to resize charts
+  useEffect(() => {
+    if (initialSymbol !== selectedSymbol) {
+      setSelectedSymbol(initialSymbol);
+      setSearchQuery(initialSymbol);
+      setPortfolioData(prev => ({ ...prev, symbol: initialSymbol }));
+    }
+  }, [initialSymbol, selectedSymbol]);
+
+  // Data loading functions
+  const loadChartData = async () => {
+    try {
+      const data = await stockService.getHistoricalData(selectedSymbol, timeRange);
+      setCandlestickData(data);
+      setVolumeData(data);
+    } catch (error) {
+      console.error('Error loading chart data:', error);
+    }
+  };
+
+  const loadStockData = async () => {
+    try {
+      const quote = await stockService.getStockQuote(selectedSymbol);
+      if (quote && quote['Global Quote']) {
+        const globalQuote = quote['Global Quote'];
+        const currentPrice = parseFloat(globalQuote['05. price']) || 0;
+        const change = parseFloat(globalQuote['09. change']) || 0;
+        const changePercent = parseFloat(globalQuote['10. change percent']?.replace('%', '')) || 0;
+        const volume = parseInt(globalQuote['06. volume']) || 0;
+        
+        setPortfolioData(prev => ({
+          ...prev,
+          symbol: selectedSymbol,
+          currentPrice,
+          dailyChange: change,
+          dailyChangePercent: changePercent,
+          totalVolume: volume,
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading stock data:', error);
+    }
+  };
+
+  // Gesture handlers
   const onDividerPanGestureEvent = (event: any) => {
     const { translationY } = event;
     const newChartHeight = Math.max(100, Math.min(screenHeight * 0.6, chartHeight + translationY));
@@ -111,70 +145,25 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
     setVolumeHeight(newVolumeHeight);
   };
 
-  // Handle chart pan for scrolling
   const onChartPanGestureEvent = (event: any) => {
     if (!isDrawing) {
-      // Fix: Access translationX directly from event, not event.nativeEvent
       const { translationX } = event;
       setPanOffset(prev => Math.max(-candlestickData.length * 0.5, Math.min(0, prev + translationX * 0.01)));
     }
   };
 
-  // Handle pinch for zoom
   const onChartPinchGestureEvent = (event: any) => {
-    // Fix: Access scale directly from event, not event.nativeEvent
     const { scale } = event;
     setZoomLevel(prev => Math.max(0.5, Math.min(3, prev * scale)));
   };
 
-  // Handle drawing gestures
-  const onDrawingPanGestureEvent = (event: any) => {
-    if (!showSidebar) return;
-    
-    // Fix: Access properties directly from event, not event.nativeEvent
-    const { state, x, y } = event;
-    
-    if (state === 'began') {
-      setIsDrawing(true);
-      const newDrawing: DrawingTool = {
-        type: selectedDrawingTool,
-        points: [{ x, y }],
-        color: theme.colors.primary,
-        emoji: selectedDrawingTool === 'emoji' ? '📈' : undefined,
-      };
-      setCurrentDrawing(newDrawing);
-    } else if (state === 'active' && currentDrawing) {
-      setCurrentDrawing(prev => prev ? {
-        ...prev,
-        points: [...prev.points.slice(0, 1), { x, y }]
-      } : null);
-    } else if (state === 'end' && currentDrawing) {
-      setDrawings(prev => [...prev, currentDrawing]);
-      setCurrentDrawing(null);
-      setIsDrawing(false);
-    }
-  };
+  // Gesture setup
+  const dividerPanGesture = Gesture.Pan().onUpdate(onDividerPanGestureEvent);
+  const chartPanGesture = Gesture.Pan().onUpdate(onChartPanGestureEvent);
+  const chartPinchGesture = Gesture.Pinch().onUpdate(onChartPinchGestureEvent);
+  const combinedChartGesture = Gesture.Simultaneous(chartPanGesture, chartPinchGesture);
 
-  // Create gesture objects
-  const dividerPanGesture = Gesture.Pan()
-    .onUpdate(onDividerPanGestureEvent);
-
-  const chartPanGesture = Gesture.Pan()
-    .onUpdate(onChartPanGestureEvent);
-
-  const chartPinchGesture = Gesture.Pinch()
-    .onUpdate(onChartPinchGestureEvent);
-
-  const drawingPanGesture = Gesture.Pan()
-    .onUpdate(onDrawingPanGestureEvent);
-
-  const combinedChartGesture = Gesture.Simultaneous(
-    chartPanGesture,
-    chartPinchGesture,
-    drawingPanGesture
-  );
-
-  // Render candlestick chart
+  // Chart rendering functions
   const renderCandlestickChart = () => {
     if (candlestickData.length === 0) return null;
     
@@ -239,7 +228,6 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
           
           return (
             <React.Fragment key={index}>
-              {/* Wick */}
               <Line
                 x1={x}
                 y1={highY}
@@ -248,7 +236,6 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
                 stroke={isUp ? theme.colors.positive : theme.colors.negative}
                 strokeWidth={1}
               />
-              {/* Body */}
               <Rect
                 x={x - candleWidth / 2}
                 y={bodyTop}
@@ -296,7 +283,6 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
     );
   };
 
-  // Render volume chart
   const renderVolumeChart = () => {
     if (volumeData.length === 0) return null;
     
@@ -336,7 +322,6 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
     );
   };
 
-  // Render sidebar with drawing tools
   const renderSidebar = () => {
     if (!showSidebar) return null;
     
@@ -353,7 +338,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
           style={styles.sidebarCloseButton}
           onPress={() => setShowSidebar(false)}
         >
-          <ThemedText>✕</ThemedText>
+          <ThemedText style={styles.closeButtonText}>✕</ThemedText>
         </TouchableOpacity>
         
         {tools.map((tool) => (
@@ -383,102 +368,75 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
     );
   };
 
-  // Load data when symbol changes
-  useEffect(() => {
-    if (initialSymbol !== selectedSymbol) {
-      setSelectedSymbol(initialSymbol);
-      setSearchQuery(initialSymbol);
-      setPortfolioData(prev => ({ ...prev, symbol: initialSymbol }));
-    }
-  }, [initialSymbol]);
-
-  // Load data on component mount and when symbol/timeRange changes
-  useEffect(() => {
-    loadChartData();
-    loadStockData();
-  }, [selectedSymbol, timeRange]);
-
-  const loadChartData = async () => {
-    try {
-      const data = await stockService.getHistoricalData(selectedSymbol, timeRange);
-      setCandlestickData(data);
-      setVolumeData(data);
-    } catch (error) {
-      console.error('Error loading chart data:', error);
-    }
-  };
-
-  const loadStockData = async () => {
-    try {
-      // Fetch current stock data
-      const quote = await stockService.getStockQuote(selectedSymbol);
-      if (quote && quote['Global Quote']) {
-        const globalQuote = quote['Global Quote'];
-        const currentPrice = parseFloat(globalQuote['05. price']) || 0;
-        const change = parseFloat(globalQuote['09. change']) || 0;
-        const changePercent = parseFloat(globalQuote['10. change percent']?.replace('%', '')) || 0;
-        const volume = parseInt(globalQuote['06. volume']) || 0;
-        
-        setPortfolioData(prev => ({
-          ...prev,
-          symbol: selectedSymbol,
-          currentPrice,
-          dailyChange: change,
-          dailyChangePercent: changePercent,
-          totalVolume: volume,
-        }));
-      }
-    } catch (error) {
-      console.error('Error loading stock data:', error);
-    }
-  };
-
   return (
     <GestureHandlerRootView style={styles.container}>
       <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        {/* Header with back button */}
+        {/* Header Section */}
         <View style={[styles.header, { backgroundColor: theme.colors.cardBackground }]}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <ThemedText style={styles.backButtonText}>← Back</ThemedText>
-          </TouchableOpacity>
-          
-          {/* Metrics */}
-          <View style={styles.metricsContainer}>
-            <View style={styles.metricItem}>
-              <ThemedText variant="caption" style={styles.metricLabel}>Total vol</ThemedText>
-              <ThemedText style={styles.metricValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
-            </View>
-            <View style={styles.metricItem}>
-              <ThemedText variant="caption" style={styles.metricLabel}>Total value</ThemedText>
-              <ThemedText style={styles.metricValue}>{portfolioData.totalValue} bil</ThemedText>
-            </View>
-            <View style={styles.metricItem}>
-              <ThemedText variant="caption" style={styles.metricLabel}>FR. buy Vol</ThemedText>
-              <ThemedText style={styles.metricValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
-            </View>
-            <View style={styles.metricItem}>
-              <ThemedText variant="caption" style={styles.metricLabel}>FR. sell Vol</ThemedText>
-              <ThemedText style={styles.metricValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
+          {/* Top Row: Back button and Search */}
+          <View style={styles.topRow}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <ThemedText style={styles.backButtonText}>←</ThemedText>
+            </TouchableOpacity>
+            
+            <View style={styles.searchRow}>
+              <ThemedText style={styles.searchIcon}>🔍</ThemedText>
+              <ThemedText style={styles.symbolText}>{selectedSymbol}</ThemedText>
             </View>
           </View>
           
-          {/* Search Bar */}
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.inputBackground }]}>
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.inputText }]}
-              placeholder="Search symbols..."
-              placeholderTextColor={theme.colors.secondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onSubmitEditing={() => {
-                if (searchQuery.trim()) {
-                  setSelectedSymbol(searchQuery.trim().toUpperCase());
-                }
-              }}
-            />
+          {/* Price Display Section */}
+          <View style={styles.priceSection}>
+            <View style={styles.leftPriceArea}>
+              <ThemedText style={styles.mainPrice}>
+                {portfolioData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </ThemedText>
+              <View style={styles.changeRow}>
+                <ThemedText style={[styles.changeText, { color: portfolioData.dailyChange >= 0 ? theme.colors.positive : theme.colors.negative }]}>
+                  ▲ +{portfolioData.dailyChange.toFixed(2)} +{portfolioData.dailyChangePercent.toFixed(2)}%
+                </ThemedText>
+              </View>
+              <View style={styles.statusRow}>
+                <ThemedText style={styles.statusIcon}>⏰</ThemedText>
+                <ThemedText style={styles.statusText}>LO</ThemedText>
+              </View>
+              <View style={styles.indicatorRow}>
+                <ThemedText style={[styles.indicator, { color: theme.colors.positive }]}>▲17 (0)</ThemedText>
+                <ThemedText style={[styles.indicator, { color: '#FFA500' }]}>|3</ThemedText>
+                <ThemedText style={[styles.indicator, { color: theme.colors.negative }]}>▼10 (0)</ThemedText>
+              </View>
+            </View>
+            
+            {/* Metrics Grid */}
+            <View style={styles.metricsGrid}>
+              <View style={styles.metricRow}>
+                <View style={styles.metricItem}>
+                  <ThemedText variant="caption" style={styles.metricLabel}>Total vol</ThemedText>
+                  <ThemedText style={styles.metricValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
+                </View>
+              </View>
+              <View style={styles.metricRow}>
+                <View style={styles.metricItem}>
+                  <ThemedText variant="caption" style={styles.metricLabel}>Total value</ThemedText>
+                  <ThemedText style={styles.metricValue}>{portfolioData.totalValue} bil</ThemedText>
+                </View>
+              </View>
+              <View style={styles.metricRow}>
+                <View style={styles.metricItem}>
+                  <ThemedText variant="caption" style={styles.metricLabel}>FR. buy Vol</ThemedText>
+                  <ThemedText style={styles.metricValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
+                </View>
+              </View>
+              <View style={styles.metricRow}>
+                <View style={styles.metricItem}>
+                  <ThemedText variant="caption" style={styles.metricLabel}>FR. sell Vol</ThemedText>
+                  <ThemedText style={styles.metricValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
+                </View>
+              </View>
+            </View>
           </View>
           
           {/* Tab Navigation */}
@@ -521,79 +479,29 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = () => {
         {/* Chart Content */}
         {activeTab === 'Chart' && (
           <View style={styles.chartContainer}>
-            {/* Chart Controls */}
-            <View style={[styles.chartControls, { backgroundColor: theme.colors.cardBackground }]}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {(['1day', '1week', '30days'] as TimeRange[]).map((range) => (
-                  <TouchableOpacity
-                    key={range}
-                    style={[
-                      styles.timeRangeButton,
-                      timeRange === range && { backgroundColor: theme.colors.primary },
-                    ]}
-                    onPress={() => setTimeRange(range)}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.timeRangeText,
-                        timeRange === range && { color: theme.colors.buttonText },
-                      ]}
-                    >
-                      {range}
-                    </ThemedText>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              
-              <TouchableOpacity
-                style={[styles.drawButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => setShowSidebar(!showSidebar)}
-              >
-                <ThemedText style={[styles.drawButtonText, { color: theme.colors.buttonText }]}>
-                  ✏️ Draw
-                </ThemedText>
-              </TouchableOpacity>
+            <View style={[styles.chartsWrapper, { zIndex: 5 }]}>              
+              <CandlestickBackground opacity={0.3} />
+              <ChartDrawingTool
+                width={screenWidth - 40}
+                height={chartHeight}
+                theme={theme}
+                showSidebar={showDrawingSidebar}
+                onToggleSidebar={() => setShowDrawingSidebar(!showDrawingSidebar)}
+                onDrawingsChange={(drawings) => {
+                  console.log('Drawings updated:', drawings);
+                }}
+              />
             </View>
             
-            <View style={styles.chartsWrapper}>
-              {/* Main Chart Area */}
-              <GestureDetector gesture={combinedChartGesture}>
-                <Animated.View style={[styles.chartArea, { height: chartHeight }]}>
-                  {renderCandlestickChart()}
-                </Animated.View>
-              </GestureDetector>
-              
-              {/* Resizable Divider */}
-              <GestureDetector gesture={dividerPanGesture}>
-                <Animated.View style={[styles.divider, { backgroundColor: theme.colors.border }]}>
-                  <View style={[styles.dividerHandle, { backgroundColor: theme.colors.text }]} />
-                </Animated.View>
-              </GestureDetector>
-              
-              {/* Volume Chart */}
-              <View style={[styles.volumeArea, { height: volumeHeight }]}>
-                <ThemedText variant="caption" style={styles.volumeLabel}>Volume</ThemedText>
-                {renderVolumeChart()}
-              </View>
+            {/* Volume Chart */}
+            <View style={[styles.volumeArea, { height: volumeHeight, zIndex: 5 }]}>
+              <ThemedText variant="caption" style={styles.volumeLabel}>Volume</ThemedText>
+              {renderVolumeChart()}
             </View>
-            
-            {/* Sidebar */}
-            {/* Chart Drawing Tool Overlay */}
-            <ChartDrawingTool
-              width={screenWidth - 40}
-              height={chartHeight}
-              theme={theme}
-              showSidebar={showSidebar}
-              onToggleSidebar={() => setShowSidebar(!showSidebar)}
-              onDrawingsChange={(newDrawings) => {
-                // Handle drawings change if needed for persistence
-                console.log('Drawings updated:', newDrawings);
-              }}
-            />
           </View>
         )}
         
-        {/* Summary Content (placeholder) */}
+        {/* Summary Content */}
         {activeTab === 'Summary' && (
           <View style={styles.summaryContainer}>
             <ThemedText variant="title">Summary</ThemedText>
@@ -614,37 +522,84 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#334155',
   },
-  headerTop: {
+  topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  stockInfo: {
+  backButton: {
+    padding: 8,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchIcon: {
+    fontSize: 16,
+  },
+  symbolText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  priceSection: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    justifyContent: 'space-between',
+  },
+  leftPriceArea: {
     flex: 1,
   },
-  symbol: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  price: {
+  mainPrice: {
     fontSize: 32,
     fontWeight: 'bold',
-    marginBottom: 4,
+    color: '#00C851',
   },
-  changeContainer: {
+  changeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
   },
-  change: {
-    fontSize: 16,
+  changeText: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  metricsContainer: {
+  statusRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+  },
+  statusIcon: {
+    fontSize: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    opacity: 0.7,
+  },
+  indicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 8,
+  },
+  indicator: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  metricsGrid: {
+    flex: 1,
+    paddingLeft: 16,
+  },
+  metricRow: {
+    marginBottom: 8,
   },
   metricItem: {
     flex: 1,
@@ -658,15 +613,6 @@ const styles = StyleSheet.create({
   metricValue: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  searchContainer: {
-    borderRadius: 8,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-  },
-  searchInput: {
-    height: 40,
-    fontSize: 16,
   },
   tabContainer: {
     flexDirection: 'row',
@@ -685,64 +631,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
   },
-  chartControls: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  timeRangeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    borderRadius: 4,
-    backgroundColor: 'transparent',
-  },
-  timeRangeText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  drawButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-  },
-  drawButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
   chartsWrapper: {
     flex: 1,
-    marginTop: 60, // Account for controls height
-  },
-  chartArea: {
-    backgroundColor: 'transparent',
-    padding: 10,
-  },
-  divider: {
-    height: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dividerHandle: {
-    width: 40,
-    height: 3,
-    borderRadius: 2,
-    opacity: 0.5,
+    marginTop: 40,
+    position: 'relative',
   },
   volumeArea: {
     backgroundColor: 'transparent',
@@ -767,11 +659,15 @@ const styles = StyleSheet.create({
     padding: 8,
     marginBottom: 16,
   },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   toolButton: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
-    padding: 8,
-    marginBottom: 8,
-    borderRadius: 4,
+    justifyContent: 'center',
   },
   toolIcon: {
     fontSize: 20,
