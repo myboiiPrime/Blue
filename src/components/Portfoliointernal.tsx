@@ -91,6 +91,16 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   const [currentDrawing, setCurrentDrawing] = useState<DrawingTool | null>(null);
   const [showDrawingSidebar, setShowDrawingSidebar] = useState(false);
 
+  // Tooltip states
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipData, setTooltipData] = useState<{
+    x: number;
+    y: number;
+    candle: CandlestickData;
+    index: number;
+  } | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
   // Effects
   useEffect(() => {
     loadChartData();
@@ -206,8 +216,43 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   });
 
   const renderCandlestickChart = () => {
-    if (!candlestickData.length) return null;
+    if (!candlestickData.length) {
+      return (
+        <View style={[styles.chartContainer, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ThemedText style={{ color: '#666666', fontSize: 16 }}>Loading chart data...</ThemedText>
+        </View>
+      );
+    }
 
+    // Calculate price range for better scaling
+    const prices = candlestickData.flatMap(candle => [candle.high, candle.low]);
+    const maxPrice = Math.max(...prices);
+    const minPrice = Math.min(...prices);
+    const priceRange = maxPrice - minPrice;
+    const padding = priceRange * 0.1;
+    
+    const handleChartTouch = (event: any) => {
+      const { locationX, locationY } = event.nativeEvent;
+      const candleWidth = screenWidth / candlestickData.length;
+      const candleIndex = Math.floor(locationX / candleWidth);
+      
+      if (candleIndex >= 0 && candleIndex < candlestickData.length) {
+        const candle = candlestickData[candleIndex];
+        setTooltipData({
+          x: locationX,
+          y: locationY,
+          candle,
+          index: candleIndex
+        });
+        setTooltipPosition({ x: locationX, y: locationY });
+        setShowTooltip(true);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      setTimeout(() => setShowTooltip(false), 2000); // Hide after 2 seconds
+    };
+    
     return (
       <Animated.View
         style={[
@@ -216,22 +261,29 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
             transform: [{ scale: chartScaleAnimation }],
           },
         ]}
+        onTouchStart={handleChartTouch}
+        onTouchEnd={handleTouchEnd}
         {...chartPanResponder.panHandlers}
       >
         <Svg height={chartHeight} width={screenWidth}>
           {candlestickData.map((candle, index) => {
             const x = (index * screenWidth) / candlestickData.length + panOffset;
-            const bodyHeight = Math.abs(candle.close - candle.open) * 2;
-            const bodyY = Math.min(candle.close, candle.open) * 2;
+            
+            // Better scaling calculation
+            const scaleY = (price: number) => 
+              chartHeight - ((price - minPrice + padding) / (priceRange + 2 * padding)) * chartHeight;
+            
+            const bodyHeight = Math.abs(scaleY(candle.close) - scaleY(candle.open));
+            const bodyY = Math.min(scaleY(candle.close), scaleY(candle.open));
             const color = candle.close > candle.open ? '#4CAF50' : '#F44336';
 
             return (
               <React.Fragment key={index}>
                 <Line
                   x1={x + 5}
-                  y1={candle.high * 2}
+                  y1={scaleY(candle.high)}
                   x2={x + 5}
-                  y2={candle.low * 2}
+                  y2={scaleY(candle.low)}
                   stroke={color}
                   strokeWidth="1"
                 />
@@ -239,7 +291,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
                   x={x}
                   y={bodyY}
                   width="10"
-                  height={bodyHeight}
+                  height={Math.max(bodyHeight, 1)}
                   fill={color}
                 />
               </React.Fragment>
@@ -262,7 +314,125 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
       </Animated.View>
     );
   };
-  
+  const renderVolumeChart = () => {
+    if (!volumeData.length) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ThemedText style={{ color: '#666666', fontSize: 14 }}>Loading volume data...</ThemedText>
+        </View>
+      );
+    }
+
+    // Calculate volume range for scaling
+    const volumes = volumeData.map(data => data.volume);
+    const maxVolume = Math.max(...volumes);
+    const minVolume = Math.min(...volumes);
+    const volumeRange = maxVolume - minVolume;
+    
+    const handleVolumeTouch = (event: any) => {
+      const { locationX, locationY } = event.nativeEvent;
+      const barWidth = screenWidth / volumeData.length;
+      const barIndex = Math.floor(locationX / barWidth);
+      
+      if (barIndex >= 0 && barIndex < volumeData.length) {
+        const candle = volumeData[barIndex];
+        setTooltipData({
+          x: locationX,
+          y: locationY + chartHeight,
+          candle,
+          index: barIndex
+        });
+        // Position tooltip directly above the volume bars
+        // Calculate the actual position: chartHeight + volume header height + touched bar position
+        const volumeHeaderHeight = 30; // Approximate height of volume header
+        const tooltipY = chartHeight + volumeHeaderHeight + locationY - 130; // 130px above the touched point
+        setTooltipPosition({ x: locationX, y: tooltipY });
+        setShowTooltip(true);
+      }
+    };
+    
+    return (
+      <View onTouchStart={handleVolumeTouch}>
+        <Svg height={volumeHeight - 40} width={screenWidth}>
+          {volumeData.map((data, index) => {
+            const x = (index * screenWidth) / volumeData.length;
+            const barWidth = (screenWidth / volumeData.length) * 0.8;
+            
+            // Scale volume to chart height
+            const barHeight = volumeRange > 0 
+              ? ((data.volume - minVolume) / volumeRange) * (volumeHeight - 60)
+              : 10;
+            
+            const barY = (volumeHeight - 60) - barHeight;
+            
+            // Color based on price movement
+            const color = data.close > data.open ? '#4CAF50' : '#F44336';
+            
+            return (
+              <Rect
+                key={index}
+                x={x + (barWidth * 0.1)}
+                y={barY}
+                width={barWidth}
+                height={Math.max(barHeight, 1)}
+                fill={color}
+                opacity={0.7}
+              />
+            );
+          })}
+        </Svg>
+      </View>
+    );
+  };
+  const renderTooltip = () => {
+    if (!showTooltip || !tooltipData) return null;
+
+    const { candle, index } = tooltipData;
+    const timestamp = new Date(candle.timestamp).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    return (
+      <Animated.View
+        style={[
+          styles.tooltip,
+          {
+            left: tooltipPosition.x - 80,
+            top: tooltipPosition.y - 120,
+          }
+        ]}
+      >
+        <View style={styles.tooltipContent}>
+          <ThemedText style={styles.tooltipTitle}>{portfolioData.symbol}</ThemedText>
+          <ThemedText style={styles.tooltipTime}>{timestamp}</ThemedText>
+          <View style={styles.tooltipRow}>
+            <ThemedText style={styles.tooltipLabel}>Open:</ThemedText>
+            <ThemedText style={styles.tooltipValue}>${candle.open.toFixed(2)}</ThemedText>
+          </View>
+          <View style={styles.tooltipRow}>
+            <ThemedText style={styles.tooltipLabel}>High:</ThemedText>
+            <ThemedText style={[styles.tooltipValue, { color: '#4CAF50' }]}>${candle.high.toFixed(2)}</ThemedText>
+          </View>
+          <View style={styles.tooltipRow}>
+            <ThemedText style={styles.tooltipLabel}>Low:</ThemedText>
+            <ThemedText style={[styles.tooltipValue, { color: '#F44336' }]}>${candle.low.toFixed(2)}</ThemedText>
+          </View>
+          <View style={styles.tooltipRow}>
+            <ThemedText style={styles.tooltipLabel}>Close:</ThemedText>
+            <ThemedText style={styles.tooltipValue}>${candle.close.toFixed(2)}</ThemedText>
+          </View>
+          <View style={styles.tooltipRow}>
+            <ThemedText style={styles.tooltipLabel}>Volume:</ThemedText>
+            <ThemedText style={styles.tooltipValue}>{candle.volume.toLocaleString()}</ThemedText>
+          </View>
+        </View>
+      </Animated.View>
+    );
+  };
   return (
     <GestureHandlerRootView style={styles.container}>
       {/* Header with back arrow and search */}
@@ -276,160 +446,160 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
         </View>
       </View>
 
-      {/* Main Content Container */}
-      <View style={styles.mainContent}>
-        {/* Left Side - Price and Stats */}
-        <View style={styles.leftPanel}>
-          {/* Price Display Section */}
-          <View style={styles.priceSection}>
-            <ThemedText style={styles.priceDisplay}>
-              {portfolioData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      {/* Price and Stats Section - Now horizontal layout */}
+      <View style={styles.topInfoSection}>
+        {/* Left side - Price Display Section */}
+        <View style={styles.priceSection}>
+          <ThemedText style={styles.priceDisplay}>
+            {portfolioData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+          </ThemedText>
+          <View style={styles.changeContainer}>
+            <ThemedText style={[styles.changeText, { color: portfolioData.dailyChange >= 0 ? '#00C851' : '#FF4444' }]}>
+              ▲ +{portfolioData.dailyChange.toFixed(2)} +{portfolioData.dailyChangePercent.toFixed(2)}%
             </ThemedText>
-            <View style={styles.changeContainer}>
-              <ThemedText style={[styles.changeText, { color: portfolioData.dailyChange >= 0 ? '#00C851' : '#FF4444' }]}>
-                ▲ +{portfolioData.dailyChange.toFixed(2)} +{portfolioData.dailyChangePercent.toFixed(2)}%
-              </ThemedText>
-            </View>
-            <View style={styles.timeContainer}>
-              <ThemedText style={styles.timeText}>⏰ LO</ThemedText>
-            </View>
-            <View style={styles.indicatorRow}>
-              <View style={[styles.indicator, { backgroundColor: '#00C851' }]}>
-                <ThemedText style={styles.indicatorText}>▲17 (0)</ThemedText>
-              </View>
-              <View style={[styles.indicator, { backgroundColor: '#FFD700' }]}>
-                <ThemedText style={styles.indicatorText}>|3</ThemedText>
-              </View>
-              <View style={[styles.indicator, { backgroundColor: '#FF4444' }]}>
-                <ThemedText style={styles.indicatorText}>▼10 (0)</ThemedText>
-              </View>
-            </View>
           </View>
-
-          {/* Stats Grid */}
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <ThemedText style={styles.statLabel}>Total vol</ThemedText>
-              <ThemedText style={styles.statValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
+          <View style={styles.timeContainer}>
+            <ThemedText style={styles.timeText}>⏰ LO</ThemedText>
+          </View>
+          <View style={styles.indicatorRow}>
+            <View style={[styles.indicator, { backgroundColor: '#00C851' }]}>
+              <ThemedText style={styles.indicatorText}>▲17 (0)</ThemedText>
             </View>
-            <View style={styles.statItem}>
-              <ThemedText style={styles.statLabel}>Total value</ThemedText>
-              <ThemedText style={styles.statValue}>{portfolioData.totalValue.toFixed(2)} bil</ThemedText>
+            <View style={[styles.indicator, { backgroundColor: '#FFD700' }]}>
+              <ThemedText style={styles.indicatorText}>|3</ThemedText>
             </View>
-            <View style={styles.statItem}>
-              <ThemedText style={styles.statLabel}>FR. buy Vol</ThemedText>
-              <ThemedText style={styles.statValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
-            </View>
-            <View style={styles.statItem}>
-              <ThemedText style={styles.statLabel}>FR. sell Vol</ThemedText>
-              <ThemedText style={styles.statValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
+            <View style={[styles.indicator, { backgroundColor: '#FF4444' }]}>
+              <ThemedText style={styles.indicatorText}>▼10 (0)</ThemedText>
             </View>
           </View>
         </View>
 
-        {/* Right Side - Chart Area */}
-        <View style={styles.rightPanel}>
-          {/* Tab Navigation */}
-          <View style={styles.tabContainer}>
-            {['Chart', 'Summary'].map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tab, activeTab === tab && styles.activeTab]}
-                onPress={() => setActiveTab(tab as 'Chart' | 'Summary')}
-              >
-                <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                  {tab}
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
+        {/* Right side - Stats Grid */}
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>Total vol</ThemedText>
+            <ThemedText style={styles.statValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
           </View>
-
-          {/* Chart Controls */}
-          <View style={styles.chartControls}>
-            <View style={styles.controlsLeft}>
-              <ThemedText style={styles.symbolText}>🔍 {portfolioData.symbol}</ThemedText>
-              <TouchableOpacity style={styles.addButton}>
-                <ThemedText style={styles.addButtonText}>⊕</ThemedText>
-              </TouchableOpacity>
-              <ThemedText style={styles.timeframeText}>D</ThemedText>
-              <TouchableOpacity style={styles.toolButton} onPress={toggleSidebar}>
-                <ThemedText style={styles.toolIcon}>🎨</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.toolButton}>
-                <ThemedText style={styles.toolIcon}>ƒₓ</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.toolButton}>
-                <ThemedText style={styles.toolIcon}>⚏</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.toolButton}>
-                <ThemedText style={styles.toolIcon}>↶</ThemedText>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>Total value</ThemedText>
+            <ThemedText style={styles.statValue}>{portfolioData.totalValue.toFixed(2)} bil</ThemedText>
           </View>
-
-          {/* Chart Content */}
-          <View style={styles.content}>
-            {activeTab === 'Chart' && (
-              <View style={styles.chartWrapper}>
-                {/* Chart Header */}
-                <View style={styles.chartHeader}>
-                  <ThemedText style={styles.chartTitle}>{portfolioData.symbol} • 1D</ThemedText>
-                  <ThemedText style={styles.chartPrice}>
-                    {portfolioData.currentPrice.toFixed(2)} +{portfolioData.dailyChange.toFixed(2)} (+{portfolioData.dailyChangePercent.toFixed(2)}%)
-                  </ThemedText>
-                </View>
-                
-                {renderCandlestickChart()}
-                
-                {/* Animated Divider */}
-                <Animated.View
-                  style={[
-                    styles.divider,
-                    {
-                      top: dividerAnimation,
-                    },
-                  ]}
-                  {...dividerPanResponder.panHandlers}
-                >
-                  <View style={styles.dividerHandle} />
-                </Animated.View>
-                
-                {/* Volume Chart */}
-                <View style={[styles.volumeContainer, { height: volumeHeight }]}>
-                  <View style={styles.volumeHeader}>
-                    <ThemedText style={styles.volumeTitle}>Volume</ThemedText>
-                  </View>
-                  <CandlestickBackground />
-                </View>
-
-                {/* Chart Footer Controls */}
-                <View style={styles.chartFooter}>
-                  <View style={styles.footerLeft}>
-                    <ThemedText style={styles.footerText}>Date Range</ThemedText>
-                    <ThemedText style={styles.footerText}>10:35:06 (UTC+7)</ThemedText>
-                  </View>
-                  <View style={styles.footerRight}>
-                    <ThemedText style={styles.footerText}>%</ThemedText>
-                    <ThemedText style={styles.footerText}>log</ThemedText>
-                    <ThemedText style={[styles.footerText, styles.autoText]}>auto</ThemedText>
-                  </View>
-                </View>
-              </View>
-            )}
-            
-            {activeTab === 'Summary' && (
-              <View style={styles.summaryContainer}>
-                <ThemedText style={styles.summaryText}>
-                  Portfolio Summary for {portfolioData.symbol}
-                </ThemedText>
-                <ThemedText style={styles.summaryDetail}>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
-                <ThemedText style={styles.summaryDetail}>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
-                <ThemedText style={styles.summaryDetail}>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
-              </View>
-            )}
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>FR. buy Vol</ThemedText>
+            <ThemedText style={styles.statValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
+          </View>
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>FR. sell Vol</ThemedText>
+            <ThemedText style={styles.statValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
           </View>
         </View>
       </View>
+
+      {/* Chart Area - Now takes full width */}
+      <View style={styles.chartArea}>
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          {['Chart', 'Summary'].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, activeTab === tab && styles.activeTab]}
+              onPress={() => setActiveTab(tab as 'Chart' | 'Summary')}
+            >
+              <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                {tab}
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Chart Controls */}
+        <View style={styles.chartControls}>
+          <View style={styles.controlsLeft}>
+            <ThemedText style={styles.symbolText}>🔍 {portfolioData.symbol}</ThemedText>
+            <TouchableOpacity style={styles.addButton}>
+              <ThemedText style={styles.addButtonText}>⊕</ThemedText>
+            </TouchableOpacity>
+            <ThemedText style={styles.timeframeText}>D</ThemedText>
+            <TouchableOpacity style={styles.toolButton} onPress={toggleSidebar}>
+              <ThemedText style={styles.toolIcon}>🎨</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolButton}>
+              <ThemedText style={styles.toolIcon}>ƒₓ</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolButton}>
+              <ThemedText style={styles.toolIcon}>⚏</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.toolButton}>
+              <ThemedText style={styles.toolIcon}>↶</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Chart Content */}
+        <View style={styles.content}>
+          {activeTab === 'Chart' && (
+            <View style={styles.chartWrapper}>
+              {/* Chart Header */}
+              <View style={styles.chartHeader}>
+                <ThemedText style={styles.chartTitle}>{portfolioData.symbol} • 1D</ThemedText>
+                <ThemedText style={styles.chartPrice}>
+                  {portfolioData.currentPrice.toFixed(2)} +{portfolioData.dailyChange.toFixed(2)} (+{portfolioData.dailyChangePercent.toFixed(2)}%)
+                </ThemedText>
+              </View>
+              
+              {renderCandlestickChart()}
+              
+              {/* Animated Divider */}
+              <Animated.View
+                style={[
+                  styles.divider,
+                  {
+                    top: dividerAnimation,
+                  },
+                ]}
+                {...dividerPanResponder.panHandlers}
+              >
+                <View style={styles.dividerHandle} />
+              </Animated.View>
+              
+              {/* Volume Chart */}
+              <View style={[styles.volumeContainer, { height: volumeHeight }]}>
+                <View style={styles.volumeHeader}>
+                  <ThemedText style={styles.volumeTitle}>Volume</ThemedText>
+                </View>
+                {renderVolumeChart()}
+              </View>
+
+              {/* Chart Footer Controls */}
+              <View style={styles.chartFooter}>
+                <View style={styles.footerLeft}>
+                  <ThemedText style={styles.footerText}>Date Range</ThemedText>
+                  <ThemedText style={styles.footerText}>10:35:06 (UTC+7)</ThemedText>
+                </View>
+                <View style={styles.footerRight}>
+                  <ThemedText style={styles.footerText}>%</ThemedText>
+                  <ThemedText style={styles.footerText}>log</ThemedText>
+                  <ThemedText style={[styles.footerText, styles.autoText]}>auto</ThemedText>
+                </View>
+              </View>
+            </View>
+          )}
+          
+          {activeTab === 'Summary' && (
+            <View style={styles.summaryContainer}>
+              <ThemedText style={styles.summaryText}>
+                Portfolio Summary for {portfolioData.symbol}
+              </ThemedText>
+              <ThemedText style={styles.summaryDetail}>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
+              <ThemedText style={styles.summaryDetail}>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
+              <ThemedText style={styles.summaryDetail}>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Tooltip */}
+      {renderTooltip()}
 
       {/* Animated Sidebar with correct ChartDrawingTool props */}
       <Animated.View
@@ -515,6 +685,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   priceSection: {
+    flex: 1, // Takes left portion
     padding: 16,
     backgroundColor: '#FFFFFF',
   },
@@ -553,8 +724,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   statsGrid: {
+    flex: 1, // Takes right portion
     padding: 16,
     backgroundColor: '#FFFFFF',
+    borderLeftWidth: 1, // Add separator line
+    borderLeftColor: '#E5E5E5',
   },
   statItem: {
     marginBottom: 12,
@@ -611,6 +785,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000000',
     fontWeight: '600',
+  },
+  chartArea: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  topInfoSection: {
+    flexDirection: 'row', // Add this line to make it horizontal
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
   },
   addButton: {
     width: 24,
@@ -748,6 +932,54 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: '#333',
   },
+  tooltip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    borderRadius: 6,
+    padding: 8,
+    zIndex: 1000,
+    minWidth: 120, // Reduced from 160
+    maxWidth: 140, // Added max width constraint
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  tooltipContent: {
+    alignItems: 'flex-start',
+  },
+  tooltipTitle: {
+    color: '#FFFFFF',
+    fontSize: 13, // Slightly smaller
+    fontWeight: 'bold',
+    marginBottom: 3, // Reduced margin
+  },
+  tooltipTime: {
+    color: '#CCCCCC',
+    fontSize: 11, // Slightly smaller
+    marginBottom: 6, // Reduced margin
+  },
+  tooltipRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 1, // Reduced from 2
+  },
+  tooltipLabel: {
+    color: '#CCCCCC',
+    fontSize: 11, // Slightly smaller
+    minWidth: 40, // Reduced from 50
+  },
+  tooltipValue: {
+    color: '#FFFFFF',
+    fontSize: 11, // Slightly smaller
+    fontWeight: '600',
+  },
 });
 
 export default Portfoliointernal;
+
+
+
+

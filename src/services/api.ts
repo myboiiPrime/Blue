@@ -256,7 +256,9 @@ export const stockService: StockService = {
       return candlesticks;
     } catch (error) {
       console.error(`Error fetching historical data for ${symbol}:`, error);
-      return generateMockCandlestickData();
+      // Generate mock data with realistic base price for the symbol
+      const basePrice = symbol === 'VN30' ? 1442.97 : 150;
+      return generateMockCandlestickData(symbol, basePrice);
     }
   },
   
@@ -346,17 +348,19 @@ export const stockService: StockService = {
 };
 
 // Fallback mock candlestick data generator
-function generateMockCandlestickData(): CandlestickData[] {
+function generateMockCandlestickData(symbol?: string, basePrice?: number): CandlestickData[] {
   const data: CandlestickData[] = [];
-  let basePrice = 150;
+  let currentPrice = basePrice || 1442.97; // Use portfolio current price as base
   const now = new Date();
   
   for (let i = 0; i < 50; i++) {
     const timestamp = new Date(now.getTime() - (50 - i) * 5 * 60 * 1000); // 5-minute intervals
-    const open = basePrice + (Math.random() - 0.5) * 2;
-    const close = open + (Math.random() - 0.5) * 3;
-    const high = Math.max(open, close) + Math.random() * 1;
-    const low = Math.min(open, close) - Math.random() * 1;
+    const variation = (Math.random() - 0.5) * (currentPrice * 0.02); // 2% variation
+    const open = currentPrice + variation;
+    const closeVariation = (Math.random() - 0.5) * (currentPrice * 0.015); // 1.5% variation
+    const close = open + closeVariation;
+    const high = Math.max(open, close) + Math.random() * (currentPrice * 0.005);
+    const low = Math.min(open, close) - Math.random() * (currentPrice * 0.005);
     
     data.push({
       timestamp: timestamp.toISOString(),
@@ -364,10 +368,10 @@ function generateMockCandlestickData(): CandlestickData[] {
       high: parseFloat(high.toFixed(2)),
       low: parseFloat(low.toFixed(2)),
       close: parseFloat(close.toFixed(2)),
-      volume: Math.floor(Math.random() * 10000) + 1000
+      volume: Math.floor(Math.random() * 1000000) + 100000 // More realistic volume
     });
     
-    basePrice = close;
+    currentPrice = close;
   }
   
   return data;
