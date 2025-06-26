@@ -174,31 +174,35 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   });
   
   // Divider pan responder
+  // Add this variable to track position during pan
+  let lastDividerPosition = screenHeight * 0.6;
+  
   const dividerPanResponder = PanResponder.create({
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderMove: (evt, gestureState) => {
-      const { dy } = gestureState;
-      const newPosition = Math.max(
-        screenHeight * 0.3,
-        Math.min(screenHeight * 0.8, screenHeight * 0.6 + dy)
-      );
-      dividerAnimation.setValue(newPosition);
-      
-      const newChartHeight = newPosition - 100;
-      const newVolumeHeight = screenHeight - newPosition - 100;
-      setChartHeight(newChartHeight);
-      setVolumeHeight(newVolumeHeight);
-    },
-    onPanResponderRelease: () => {
-      // Snap to nearest position based on screen center
-      // Since we don't need the exact current value, we can use the gesture's final position
-      const snapPosition = screenHeight * 0.5; // Default to center, or choose based on your UI needs
-      
-      Animated.spring(dividerAnimation, {
-        toValue: snapPosition,
-        useNativeDriver: false,
-      }).start();
-    },
+  onStartShouldSetPanResponder: () => true,
+  onMoveShouldSetPanResponder: () => true,
+  onPanResponderMove: (evt, gestureState) => {
+    const { dy } = gestureState;
+    const newPosition = Math.max(
+      screenHeight * 0.3,
+      Math.min(screenHeight * 0.8, screenHeight * 0.6 + dy)
+    );
+    lastDividerPosition = newPosition; // Track the position
+    dividerAnimation.setValue(newPosition);
+    
+    const newChartHeight = newPosition - 100;
+    const newVolumeHeight = screenHeight - newPosition - 100;
+    setChartHeight(newChartHeight);
+    setVolumeHeight(newVolumeHeight);
+  },
+  onPanResponderRelease: () => {
+    // Use the tracked position instead of trying to get it from the animated value
+    const snapPosition = lastDividerPosition < screenHeight * 0.5 ? screenHeight * 0.4 : screenHeight * 0.6;
+    
+    Animated.spring(dividerAnimation, {
+      toValue: snapPosition,
+      useNativeDriver: false,
+    }).start();
+  },
   });
 
   const renderCandlestickChart = () => {
@@ -261,67 +265,170 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   
   return (
     <GestureHandlerRootView style={styles.container}>
-      {/* Header */}
+      {/* Header with back arrow and search */}
       <View style={styles.header}>
-        <ThemedText style={styles.headerTitle}>
-          {portfolioData.symbol} - ${portfolioData.currentPrice.toFixed(2)}
-        </ThemedText>
-        <TouchableOpacity onPress={toggleSidebar} style={styles.toolButton}>
-          <ThemedText style={styles.toolButtonText}>Tools</ThemedText>
+        <TouchableOpacity style={styles.backButton}>
+          <ThemedText style={styles.backArrow}>←</ThemedText>
         </TouchableOpacity>
+        <View style={styles.searchContainer}>
+          <ThemedText style={styles.searchIcon}>🔍</ThemedText>
+          <ThemedText style={styles.headerTitle}>{portfolioData.symbol}</ThemedText>
+        </View>
       </View>
 
-      {/* Tab Navigation */}
-      <View style={styles.tabContainer}>
-        {['Chart', 'Summary'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, activeTab === tab && styles.activeTab]}
-            onPress={() => setActiveTab(tab as 'Chart' | 'Summary')}
-          >
-            <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-              {tab}
+      {/* Main Content Container */}
+      <View style={styles.mainContent}>
+        {/* Left Side - Price and Stats */}
+        <View style={styles.leftPanel}>
+          {/* Price Display Section */}
+          <View style={styles.priceSection}>
+            <ThemedText style={styles.priceDisplay}>
+              {portfolioData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </ThemedText>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Main Content */}
-      <View style={styles.content}>
-        {activeTab === 'Chart' && (
-          <View style={styles.chartWrapper}>
-            {renderCandlestickChart()}
-            
-            {/* Animated Divider */}
-            <Animated.View
-              style={[
-                styles.divider,
-                {
-                  top: dividerAnimation,
-                },
-              ]}
-              {...dividerPanResponder.panHandlers}
-            >
-              <View style={styles.dividerHandle} />
-            </Animated.View>
-            
-            {/* Volume Chart */}
-            <View style={[styles.volumeContainer, { height: volumeHeight }]}>
-              <CandlestickBackground />
+            <View style={styles.changeContainer}>
+              <ThemedText style={[styles.changeText, { color: portfolioData.dailyChange >= 0 ? '#00C851' : '#FF4444' }]}>
+                ▲ +{portfolioData.dailyChange.toFixed(2)} +{portfolioData.dailyChangePercent.toFixed(2)}%
+              </ThemedText>
+            </View>
+            <View style={styles.timeContainer}>
+              <ThemedText style={styles.timeText}>⏰ LO</ThemedText>
+            </View>
+            <View style={styles.indicatorRow}>
+              <View style={[styles.indicator, { backgroundColor: '#00C851' }]}>
+                <ThemedText style={styles.indicatorText}>▲17 (0)</ThemedText>
+              </View>
+              <View style={[styles.indicator, { backgroundColor: '#FFD700' }]}>
+                <ThemedText style={styles.indicatorText}>|3</ThemedText>
+              </View>
+              <View style={[styles.indicator, { backgroundColor: '#FF4444' }]}>
+                <ThemedText style={styles.indicatorText}>▼10 (0)</ThemedText>
+              </View>
             </View>
           </View>
-        )}
-        
-        {activeTab === 'Summary' && (
-          <View style={styles.summaryContainer}>
-            <ThemedText style={styles.summaryText}>
-              Portfolio Summary for {portfolioData.symbol}
-            </ThemedText>
-            <ThemedText>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
-            <ThemedText>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
-            <ThemedText>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
+
+          {/* Stats Grid */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statLabel}>Total vol</ThemedText>
+              <ThemedText style={styles.statValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
+            </View>
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statLabel}>Total value</ThemedText>
+              <ThemedText style={styles.statValue}>{portfolioData.totalValue.toFixed(2)} bil</ThemedText>
+            </View>
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statLabel}>FR. buy Vol</ThemedText>
+              <ThemedText style={styles.statValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
+            </View>
+            <View style={styles.statItem}>
+              <ThemedText style={styles.statLabel}>FR. sell Vol</ThemedText>
+              <ThemedText style={styles.statValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
+            </View>
           </View>
-        )}
+        </View>
+
+        {/* Right Side - Chart Area */}
+        <View style={styles.rightPanel}>
+          {/* Tab Navigation */}
+          <View style={styles.tabContainer}>
+            {['Chart', 'Summary'].map((tab) => (
+              <TouchableOpacity
+                key={tab}
+                style={[styles.tab, activeTab === tab && styles.activeTab]}
+                onPress={() => setActiveTab(tab as 'Chart' | 'Summary')}
+              >
+                <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+                  {tab}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Chart Controls */}
+          <View style={styles.chartControls}>
+            <View style={styles.controlsLeft}>
+              <ThemedText style={styles.symbolText}>🔍 {portfolioData.symbol}</ThemedText>
+              <TouchableOpacity style={styles.addButton}>
+                <ThemedText style={styles.addButtonText}>⊕</ThemedText>
+              </TouchableOpacity>
+              <ThemedText style={styles.timeframeText}>D</ThemedText>
+              <TouchableOpacity style={styles.toolButton} onPress={toggleSidebar}>
+                <ThemedText style={styles.toolIcon}>🎨</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolButton}>
+                <ThemedText style={styles.toolIcon}>ƒₓ</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolButton}>
+                <ThemedText style={styles.toolIcon}>⚏</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.toolButton}>
+                <ThemedText style={styles.toolIcon}>↶</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Chart Content */}
+          <View style={styles.content}>
+            {activeTab === 'Chart' && (
+              <View style={styles.chartWrapper}>
+                {/* Chart Header */}
+                <View style={styles.chartHeader}>
+                  <ThemedText style={styles.chartTitle}>{portfolioData.symbol} • 1D</ThemedText>
+                  <ThemedText style={styles.chartPrice}>
+                    {portfolioData.currentPrice.toFixed(2)} +{portfolioData.dailyChange.toFixed(2)} (+{portfolioData.dailyChangePercent.toFixed(2)}%)
+                  </ThemedText>
+                </View>
+                
+                {renderCandlestickChart()}
+                
+                {/* Animated Divider */}
+                <Animated.View
+                  style={[
+                    styles.divider,
+                    {
+                      top: dividerAnimation,
+                    },
+                  ]}
+                  {...dividerPanResponder.panHandlers}
+                >
+                  <View style={styles.dividerHandle} />
+                </Animated.View>
+                
+                {/* Volume Chart */}
+                <View style={[styles.volumeContainer, { height: volumeHeight }]}>
+                  <View style={styles.volumeHeader}>
+                    <ThemedText style={styles.volumeTitle}>Volume</ThemedText>
+                  </View>
+                  <CandlestickBackground />
+                </View>
+
+                {/* Chart Footer Controls */}
+                <View style={styles.chartFooter}>
+                  <View style={styles.footerLeft}>
+                    <ThemedText style={styles.footerText}>Date Range</ThemedText>
+                    <ThemedText style={styles.footerText}>10:35:06 (UTC+7)</ThemedText>
+                  </View>
+                  <View style={styles.footerRight}>
+                    <ThemedText style={styles.footerText}>%</ThemedText>
+                    <ThemedText style={styles.footerText}>log</ThemedText>
+                    <ThemedText style={[styles.footerText, styles.autoText]}>auto</ThemedText>
+                  </View>
+                </View>
+              </View>
+            )}
+            
+            {activeTab === 'Summary' && (
+              <View style={styles.summaryContainer}>
+                <ThemedText style={styles.summaryText}>
+                  Portfolio Summary for {portfolioData.symbol}
+                </ThemedText>
+                <ThemedText style={styles.summaryDetail}>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
+                <ThemedText style={styles.summaryDetail}>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
+                <ThemedText style={styles.summaryDetail}>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
+              </View>
+            )}
+          </View>
+        </View>
       </View>
 
       {/* Animated Sidebar with correct ChartDrawingTool props */}
@@ -358,51 +465,177 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  backButton: {
+    padding: 8,
+  },
+  backArrow: {
+    fontSize: 20,
+    color: '#000000',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 16,
+  },
+  searchIcon: {
+    fontSize: 16,
+    marginRight: 8,
+    color: '#666666',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#000000',
   },
-  toolButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+  mainContent: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
   },
-  toolButtonText: {
-    color: 'white',
-    fontSize: 12,
+  leftPanel: {
+    width: '40%',
+    backgroundColor: '#FFFFFF',
+    borderRightWidth: 1,
+    borderRightColor: '#E5E5E5',
+  },
+  rightPanel: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  priceSection: {
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  priceDisplay: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#00C851',
+    marginBottom: 4,
+  },
+  changeContainer: {
+    marginBottom: 8,
+  },
+  changeText: {
+    fontSize: 14,
     fontWeight: '600',
+  },
+  timeContainer: {
+    marginBottom: 8,
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  indicatorRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  indicator: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+  },
+  indicatorText: {
+    fontSize: 10,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  statsGrid: {
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  statItem: {
+    marginBottom: 12,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666666',
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+    paddingHorizontal: 16,
   },
   tab: {
-    flex: 1,
     paddingVertical: 12,
-    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginRight: 16,
   },
   activeTab: {
     borderBottomWidth: 2,
     borderBottomColor: '#007AFF',
   },
   tabText: {
-    color: '#888',
+    color: '#888888',
     fontSize: 14,
   },
   activeTabText: {
     color: '#007AFF',
     fontWeight: '600',
+  },
+  chartControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  controlsLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  symbolText: {
+    fontSize: 14,
+    color: '#000000',
+    fontWeight: '600',
+  },
+  addButton: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  timeframeText: {
+    fontSize: 14,
+    color: '#000000',
+    fontWeight: '600',
+  },
+  toolButton: {
+    padding: 6,
+  },
+  toolIcon: {
+    fontSize: 16,
+    color: '#666666',
   },
   content: {
     flex: 1,
@@ -410,37 +643,100 @@ const styles = StyleSheet.create({
   chartWrapper: {
     flex: 1,
     position: 'relative',
+    backgroundColor: '#FFFFFF',
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  chartPrice: {
+    fontSize: 12,
+    color: '#00C851',
   },
   chartContainer: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   divider: {
     position: 'absolute',
     left: 0,
     right: 0,
     height: 20,
-    backgroundColor: '#333',
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#E5E5E5',
   },
   dividerHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#666',
+    backgroundColor: '#CCCCCC',
     borderRadius: 2,
   },
   volumeContainer: {
-    backgroundColor: '#111',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  volumeHeader: {
+    padding: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  volumeTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  chartFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  footerRight: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  footerText: {
+    fontSize: 12,
+    color: '#666666',
+  },
+  autoText: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
   summaryContainer: {
     flex: 1,
     padding: 16,
+    backgroundColor: '#FFFFFF',
   },
   summaryText: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 16,
-    color: '#fff',
+    color: '#000000',
+  },
+  summaryDetail: {
+    fontSize: 14,
+    color: '#000000',
+    marginBottom: 8,
   },
   sidebar: {
     position: 'absolute',
