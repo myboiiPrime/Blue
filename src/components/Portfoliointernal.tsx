@@ -50,11 +50,16 @@ interface PortfolioInternalProps {
   route?: PortfolioInternalRouteProp;
 }
 
-const PortfolioInternal: React.FC<PortfolioInternalProps> = () => {
+const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute }) => {
   const theme = useTheme();
   const route = useRoute<PortfolioInternalRouteProp>();
   const navigation = useNavigation();
   const initialSymbol = route.params?.symbol || 'VN30';
+  
+  // Animation values
+  const sidebarAnimation = useRef(new Animated.Value(0)).current;
+  const chartScaleAnimation = useRef(new Animated.Value(1)).current;
+  const dividerAnimation = useRef(new Animated.Value(screenHeight * 0.6)).current;
   
   // State variables
   const [activeTab, setActiveTab] = useState<'Chart' | 'Summary'>('Chart');
@@ -135,380 +140,217 @@ const PortfolioInternal: React.FC<PortfolioInternalProps> = () => {
     }
   };
 
-  // Gesture handlers
-  const onDividerPanGestureEvent = (event: any) => {
-    const { translationY } = event;
-    const newChartHeight = Math.max(100, Math.min(screenHeight * 0.6, chartHeight + translationY));
-    const newVolumeHeight = Math.max(50, Math.min(screenHeight * 0.4, volumeHeight - translationY));
-    
-    setChartHeight(newChartHeight);
-    setVolumeHeight(newVolumeHeight);
+  // Animation functions
+  const toggleSidebar = () => {
+    const toValue = showSidebar ? 0 : 1;
+    Animated.timing(sidebarAnimation, {
+      toValue,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+    setShowSidebar(!showSidebar);
   };
-
-  const onChartPanGestureEvent = (event: any) => {
-    if (!isDrawing) {
-      const { translationX } = event;
-      setPanOffset(prev => Math.max(-candlestickData.length * 0.5, Math.min(0, prev + translationX * 0.01)));
-    }
+  
+  const animateChartScale = (scale: number) => {
+    Animated.spring(chartScaleAnimation, {
+      toValue: scale,
+      useNativeDriver: true,
+    }).start();
   };
+  
+  // Pan responder for chart interactions
+  const chartPanResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderMove: (evt, gestureState) => {
+      if (!isDrawing) {
+        const { dx } = gestureState;
+        setPanOffset(prev => Math.max(-candlestickData.length * 0.5, Math.min(0, prev + dx * 0.01)));
+      }
+    },
+    onPanResponderRelease: () => {
+      // Reset chart scale if needed
+      animateChartScale(1);
+    },
+  });
+  
+  // Divider pan responder
+  const dividerPanResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderMove: (evt, gestureState) => {
+      const { dy } = gestureState;
+      const newPosition = Math.max(
+        screenHeight * 0.3,
+        Math.min(screenHeight * 0.8, screenHeight * 0.6 + dy)
+      );
+      dividerAnimation.setValue(newPosition);
+      
+      const newChartHeight = newPosition - 100;
+      const newVolumeHeight = screenHeight - newPosition - 100;
+      setChartHeight(newChartHeight);
+      setVolumeHeight(newVolumeHeight);
+    },
+    onPanResponderRelease: () => {
+      // Snap to nearest position based on screen center
+      // Since we don't need the exact current value, we can use the gesture's final position
+      const snapPosition = screenHeight * 0.5; // Default to center, or choose based on your UI needs
+      
+      Animated.spring(dividerAnimation, {
+        toValue: snapPosition,
+        useNativeDriver: false,
+      }).start();
+    },
+  });
 
-  const onChartPinchGestureEvent = (event: any) => {
-    const { scale } = event;
-    setZoomLevel(prev => Math.max(0.5, Math.min(3, prev * scale)));
-  };
-
-  // Gesture setup
-  const dividerPanGesture = Gesture.Pan().onUpdate(onDividerPanGestureEvent);
-  const chartPanGesture = Gesture.Pan().onUpdate(onChartPanGestureEvent);
-  const chartPinchGesture = Gesture.Pinch().onUpdate(onChartPinchGestureEvent);
-  const combinedChartGesture = Gesture.Simultaneous(chartPanGesture, chartPinchGesture);
-
-  // Chart rendering functions
   const renderCandlestickChart = () => {
-    if (candlestickData.length === 0) return null;
-    
-    const chartWidth = screenWidth - (showSidebar ? 80 : 20);
-    const visibleCandles = Math.floor(chartWidth / (4 * zoomLevel));
-    const startIndex = Math.max(0, candlestickData.length - visibleCandles + Math.floor(panOffset));
-    const endIndex = Math.min(candlestickData.length, startIndex + visibleCandles);
-    const visibleData = candlestickData.slice(startIndex, endIndex);
-    
-    if (visibleData.length === 0) return null;
+    if (!candlestickData.length) return null;
 
-    const prices = visibleData.flatMap(d => [d.open, d.high, d.low, d.close]);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const priceRange = maxPrice - minPrice || 1;
-    
-    const candleWidth = (chartWidth / visibleData.length) * 0.8;
-    const candleSpacing = chartWidth / visibleData.length;
-    
     return (
-      <Svg width={chartWidth} height={chartHeight}>
-        {/* Grid lines */}
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
-          const y = chartHeight * ratio;
-          const price = maxPrice - (priceRange * ratio);
-          return (
-            <React.Fragment key={index}>
-              <Line
-                x1={0}
-                y1={y}
-                x2={chartWidth}
-                y2={y}
-                stroke={theme.colors.divider}
-                strokeWidth={0.5}
-                strokeDasharray="2,2"
-              />
-              <SvgText
-                x={chartWidth - 5}
-                y={y - 2}
-                fontSize={10}
-                fill={theme.colors.text}
-                textAnchor="end"
-              >
-                {price.toFixed(2)}
-              </SvgText>
-            </React.Fragment>
-          );
-        })}
-        
-        {/* Candlesticks */}
-        {visibleData.map((candle, index) => {
-          const x = index * candleSpacing + candleSpacing / 2;
-          const isUp = candle.close >= candle.open;
-          
-          const highY = ((maxPrice - candle.high) / priceRange) * chartHeight;
-          const lowY = ((maxPrice - candle.low) / priceRange) * chartHeight;
-          const openY = ((maxPrice - candle.open) / priceRange) * chartHeight;
-          const closeY = ((maxPrice - candle.close) / priceRange) * chartHeight;
-          
-          const bodyTop = Math.min(openY, closeY);
-          const bodyHeight = Math.abs(closeY - openY);
-          
-          return (
-            <React.Fragment key={index}>
-              <Line
-                x1={x}
-                y1={highY}
-                x2={x}
-                y2={lowY}
-                stroke={isUp ? theme.colors.positive : theme.colors.negative}
-                strokeWidth={1}
-              />
-              <Rect
-                x={x - candleWidth / 2}
-                y={bodyTop}
-                width={candleWidth}
-                height={Math.max(1, bodyHeight)}
-                fill={isUp ? theme.colors.positive : theme.colors.negative}
-                stroke={isUp ? theme.colors.positive : theme.colors.negative}
-                strokeWidth={1}
-              />
-            </React.Fragment>
-          );
-        })}
-        
-        {/* Drawings */}
-        {drawings.map((drawing, index) => {
-          if (drawing.type === 'line' && drawing.points.length >= 2) {
+      <Animated.View
+        style={[
+          styles.chartContainer,
+          {
+            transform: [{ scale: chartScaleAnimation }],
+          },
+        ]}
+        {...chartPanResponder.panHandlers}
+      >
+        <Svg height={chartHeight} width={screenWidth}>
+          {candlestickData.map((candle, index) => {
+            const x = (index * screenWidth) / candlestickData.length + panOffset;
+            const bodyHeight = Math.abs(candle.close - candle.open) * 2;
+            const bodyY = Math.min(candle.close, candle.open) * 2;
+            const color = candle.close > candle.open ? '#4CAF50' : '#F44336';
+
             return (
-              <Line
-                key={index}
-                x1={drawing.points[0].x}
-                y1={drawing.points[0].y}
-                x2={drawing.points[1].x}
-                y2={drawing.points[1].y}
-                stroke={drawing.color}
-                strokeWidth={2}
-              />
+              <React.Fragment key={index}>
+                <Line
+                  x1={x + 5}
+                  y1={candle.high * 2}
+                  x2={x + 5}
+                  y2={candle.low * 2}
+                  stroke={color}
+                  strokeWidth="1"
+                />
+                <Rect
+                  x={x}
+                  y={bodyY}
+                  width="10"
+                  height={bodyHeight}
+                  fill={color}
+                />
+              </React.Fragment>
             );
-          }
-          return null;
-        })}
-        
-        {/* Current drawing */}
-        {currentDrawing && currentDrawing.points.length >= 2 && (
-          <Line
-            x1={currentDrawing.points[0].x}
-            y1={currentDrawing.points[0].y}
-            x2={currentDrawing.points[1].x}
-            y2={currentDrawing.points[1].y}
-            stroke={currentDrawing.color}
-            strokeWidth={2}
-            strokeDasharray="5,5"
-          />
-        )}
-      </Svg>
-    );
-  };
-
-  const renderVolumeChart = () => {
-    if (volumeData.length === 0) return null;
-    
-    const chartWidth = screenWidth - (showSidebar ? 80 : 20);
-    const visibleCandles = Math.floor(chartWidth / (4 * zoomLevel));
-    const startIndex = Math.max(0, volumeData.length - visibleCandles + Math.floor(panOffset));
-    const endIndex = Math.min(volumeData.length, startIndex + visibleCandles);
-    const visibleData = volumeData.slice(startIndex, endIndex);
-    
-    if (visibleData.length === 0) return null;
-    
-    const maxVolume = Math.max(...visibleData.map(d => d.volume));
-    const barWidth = (chartWidth / visibleData.length) * 0.8;
-    const barSpacing = chartWidth / visibleData.length;
-    
-    return (
-      <Svg width={chartWidth} height={volumeHeight}>
-        {visibleData.map((data, index) => {
-          const x = index * barSpacing + barSpacing / 2;
-          const barHeight = (data.volume / maxVolume) * volumeHeight * 0.9;
-          const y = volumeHeight - barHeight;
-          const isUp = data.close >= data.open;
+          })}
           
-          return (
-            <Rect
+          {/* Render drawings */}
+          {drawings.map((drawing, index) => (
+            <Line
               key={index}
-              x={x - barWidth / 2}
-              y={y}
-              width={barWidth}
-              height={barHeight}
-              fill={isUp ? theme.colors.positive : theme.colors.negative}
-              opacity={0.7}
+              x1={drawing.points[0]?.x || 0}
+              y1={drawing.points[0]?.y || 0}
+              x2={drawing.points[1]?.x || 0}
+              y2={drawing.points[1]?.y || 0}
+              stroke={drawing.color}
+              strokeWidth="2"
             />
-          );
-        })}
-      </Svg>
+          ))}
+        </Svg>
+      </Animated.View>
     );
   };
-
-  const renderSidebar = () => {
-    if (!showSidebar) return null;
-    
-    const tools = [
-      { type: 'line' as const, icon: '📏', label: 'Line' },
-      { type: 'rectangle' as const, icon: '⬜', label: 'Rectangle' },
-      { type: 'circle' as const, icon: '⭕', label: 'Circle' },
-      { type: 'emoji' as const, icon: '😀', label: 'Emoji' },
-    ];
-    
-    return (
-      <View style={[styles.sidebar, { backgroundColor: theme.colors.cardBackground }]}>
-        <TouchableOpacity
-          style={styles.sidebarCloseButton}
-          onPress={() => setShowSidebar(false)}
-        >
-          <ThemedText style={styles.closeButtonText}>✕</ThemedText>
-        </TouchableOpacity>
-        
-        {tools.map((tool) => (
-          <TouchableOpacity
-            key={tool.type}
-            style={[
-              styles.toolButton,
-              selectedDrawingTool === tool.type && {
-                backgroundColor: theme.colors.primary,
-              },
-            ]}
-            onPress={() => setSelectedDrawingTool(tool.type)}
-          >
-            <ThemedText style={styles.toolIcon}>{tool.icon}</ThemedText>
-            <ThemedText style={styles.toolLabel}>{tool.label}</ThemedText>
-          </TouchableOpacity>
-        ))}
-        
-        <TouchableOpacity
-          style={[styles.toolButton, { backgroundColor: theme.colors.negative }]}
-          onPress={() => setDrawings([])}
-        >
-          <ThemedText style={styles.toolIcon}>🗑️</ThemedText>
-          <ThemedText style={styles.toolLabel}>Clear</ThemedText>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
+  
   return (
     <GestureHandlerRootView style={styles.container}>
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        {/* Header Section */}
-        <View style={[styles.header, { backgroundColor: theme.colors.cardBackground }]}>
-          {/* Top Row: Back button and Search */}
-          <View style={styles.topRow}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-            >
-              <ThemedText style={styles.backButtonText}>←</ThemedText>
-            </TouchableOpacity>
-            
-            <View style={styles.searchRow}>
-              <ThemedText style={styles.searchIcon}>🔍</ThemedText>
-              <ThemedText style={styles.symbolText}>{selectedSymbol}</ThemedText>
-            </View>
-          </View>
-          
-          {/* Price Display Section */}
-          <View style={styles.priceSection}>
-            <View style={styles.leftPriceArea}>
-              <ThemedText style={styles.mainPrice}>
-                {portfolioData.currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </ThemedText>
-              <View style={styles.changeRow}>
-                <ThemedText style={[styles.changeText, { color: portfolioData.dailyChange >= 0 ? theme.colors.positive : theme.colors.negative }]}>
-                  ▲ +{portfolioData.dailyChange.toFixed(2)} +{portfolioData.dailyChangePercent.toFixed(2)}%
-                </ThemedText>
-              </View>
-              <View style={styles.statusRow}>
-                <ThemedText style={styles.statusIcon}>⏰</ThemedText>
-                <ThemedText style={styles.statusText}>LO</ThemedText>
-              </View>
-              <View style={styles.indicatorRow}>
-                <ThemedText style={[styles.indicator, { color: theme.colors.positive }]}>▲17 (0)</ThemedText>
-                <ThemedText style={[styles.indicator, { color: '#FFA500' }]}>|3</ThemedText>
-                <ThemedText style={[styles.indicator, { color: theme.colors.negative }]}>▼10 (0)</ThemedText>
-              </View>
-            </View>
-            
-            {/* Metrics Grid */}
-            <View style={styles.metricsGrid}>
-              <View style={styles.metricRow}>
-                <View style={styles.metricItem}>
-                  <ThemedText variant="caption" style={styles.metricLabel}>Total vol</ThemedText>
-                  <ThemedText style={styles.metricValue}>{portfolioData.totalVolume.toLocaleString()}</ThemedText>
-                </View>
-              </View>
-              <View style={styles.metricRow}>
-                <View style={styles.metricItem}>
-                  <ThemedText variant="caption" style={styles.metricLabel}>Total value</ThemedText>
-                  <ThemedText style={styles.metricValue}>{portfolioData.totalValue} bil</ThemedText>
-                </View>
-              </View>
-              <View style={styles.metricRow}>
-                <View style={styles.metricItem}>
-                  <ThemedText variant="caption" style={styles.metricLabel}>FR. buy Vol</ThemedText>
-                  <ThemedText style={styles.metricValue}>{portfolioData.foreignBuyVolume.toLocaleString()}</ThemedText>
-                </View>
-              </View>
-              <View style={styles.metricRow}>
-                <View style={styles.metricItem}>
-                  <ThemedText variant="caption" style={styles.metricLabel}>FR. sell Vol</ThemedText>
-                  <ThemedText style={styles.metricValue}>{portfolioData.foreignSellVolume.toLocaleString()}</ThemedText>
-                </View>
-              </View>
-            </View>
-          </View>
-          
-          {/* Tab Navigation */}
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[
-                styles.tab,
-                activeTab === 'Chart' && { borderBottomColor: theme.colors.primary },
-              ]}
-              onPress={() => setActiveTab('Chart')}
-            >
-              <ThemedText
-                style={[
-                  styles.tabText,
-                  activeTab === 'Chart' && { color: theme.colors.primary },
-                ]}
-              >
-                Chart
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.tab,
-                activeTab === 'Summary' && { borderBottomColor: theme.colors.primary },
-              ]}
-              onPress={() => setActiveTab('Summary')}
-            >
-              <ThemedText
-                style={[
-                  styles.tabText,
-                  activeTab === 'Summary' && { color: theme.colors.primary },
-                ]}
-              >
-                Summary
-              </ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <ThemedText style={styles.headerTitle}>
+          {portfolioData.symbol} - ${portfolioData.currentPrice.toFixed(2)}
+        </ThemedText>
+        <TouchableOpacity onPress={toggleSidebar} style={styles.toolButton}>
+          <ThemedText style={styles.toolButtonText}>Tools</ThemedText>
+        </TouchableOpacity>
+      </View>
 
-        {/* Chart Content */}
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        {['Chart', 'Summary'].map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab as 'Chart' | 'Summary')}
+          >
+            <ThemedText style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+              {tab}
+            </ThemedText>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Main Content */}
+      <View style={styles.content}>
         {activeTab === 'Chart' && (
-          <View style={styles.chartContainer}>
-            <View style={[styles.chartsWrapper, { zIndex: 5 }]}>              
-              <CandlestickBackground opacity={0.3} />
-              <ChartDrawingTool
-                width={screenWidth - 40}
-                height={chartHeight}
-                theme={theme}
-                showSidebar={showDrawingSidebar}
-                onToggleSidebar={() => setShowDrawingSidebar(!showDrawingSidebar)}
-                onDrawingsChange={(drawings) => {
-                  console.log('Drawings updated:', drawings);
-                }}
-              />
-            </View>
+          <View style={styles.chartWrapper}>
+            {renderCandlestickChart()}
+            
+            {/* Animated Divider */}
+            <Animated.View
+              style={[
+                styles.divider,
+                {
+                  top: dividerAnimation,
+                },
+              ]}
+              {...dividerPanResponder.panHandlers}
+            >
+              <View style={styles.dividerHandle} />
+            </Animated.View>
             
             {/* Volume Chart */}
-            <View style={[styles.volumeArea, { height: volumeHeight, zIndex: 5 }]}>
-              <ThemedText variant="caption" style={styles.volumeLabel}>Volume</ThemedText>
-              {renderVolumeChart()}
+            <View style={[styles.volumeContainer, { height: volumeHeight }]}>
+              <CandlestickBackground />
             </View>
           </View>
         )}
         
-        {/* Summary Content */}
         {activeTab === 'Summary' && (
           <View style={styles.summaryContainer}>
-            <ThemedText variant="title">Summary</ThemedText>
-            <ThemedText>Summary content will be implemented later</ThemedText>
+            <ThemedText style={styles.summaryText}>
+              Portfolio Summary for {portfolioData.symbol}
+            </ThemedText>
+            <ThemedText>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
+            <ThemedText>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
+            <ThemedText>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
           </View>
         )}
       </View>
+
+      {/* Animated Sidebar with correct ChartDrawingTool props */}
+      <Animated.View
+        style={[
+          styles.sidebar,
+          {
+            transform: [
+              {
+                translateX: sidebarAnimation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-300, 0],
+                }),
+              },
+            ],
+            opacity: sidebarAnimation,
+          },
+        ]}
+      >
+        <ChartDrawingTool
+          width={250}
+          height={screenHeight}
+          onDrawingsChange={setDrawings}
+          initialDrawings={drawings}
+          theme={theme}
+          showSidebar={showSidebar}
+          onToggleSidebar={toggleSidebar}
+        />
+      </Animated.View>
     </GestureHandlerRootView>
   );
 };
@@ -516,172 +358,99 @@ const PortfolioInternal: React.FC<PortfolioInternalProps> = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000',
   },
   header: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-  },
-  topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  backButton: {
-    padding: 8,
-  },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  searchRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    padding: 16,
+    backgroundColor: '#1a1a1a',
   },
-  searchIcon: {
-    fontSize: 16,
-  },
-  symbolText: {
+  headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#fff',
   },
-  priceSection: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    justifyContent: 'space-between',
+  toolButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
-  leftPriceArea: {
-    flex: 1,
-  },
-  mainPrice: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#00C851',
-  },
-  changeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  changeText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 4,
-  },
-  statusIcon: {
+  toolButtonText: {
+    color: 'white',
     fontSize: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  indicatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 8,
-  },
-  indicator: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  metricsGrid: {
-    flex: 1,
-    paddingLeft: 16,
-  },
-  metricRow: {
-    marginBottom: 8,
-  },
-  metricItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  metricLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-    opacity: 0.7,
-  },
-  metricValue: {
-    fontSize: 14,
     fontWeight: '600',
   },
   tabContainer: {
     flexDirection: 'row',
+    backgroundColor: '#1a1a1a',
   },
   tab: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  activeTab: {
     borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
+    borderBottomColor: '#007AFF',
   },
   tabText: {
-    fontSize: 16,
+    color: '#888',
+    fontSize: 14,
+  },
+  activeTabText: {
+    color: '#007AFF',
     fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+  },
+  chartWrapper: {
+    flex: 1,
+    position: 'relative',
   },
   chartContainer: {
     flex: 1,
-    flexDirection: 'row',
   },
-  chartsWrapper: {
-    flex: 1,
-    marginTop: 40,
-    position: 'relative',
-  },
-  volumeArea: {
-    backgroundColor: 'transparent',
-    padding: 10,
-  },
-  volumeLabel: {
-    marginBottom: 8,
-    opacity: 0.7,
-  },
-  sidebar: {
+  divider: {
     position: 'absolute',
     left: 0,
-    top: 60,
-    bottom: 0,
-    width: 80,
-    padding: 8,
-    borderRightWidth: 1,
-    borderRightColor: '#334155',
-  },
-  sidebarCloseButton: {
-    alignItems: 'center',
-    padding: 8,
-    marginBottom: 16,
-  },
-  closeButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  toolButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
+    right: 0,
+    height: 20,
+    backgroundColor: '#333',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  toolIcon: {
-    fontSize: 20,
-    marginBottom: 4,
+  dividerHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#666',
+    borderRadius: 2,
   },
-  toolLabel: {
-    fontSize: 10,
-    textAlign: 'center',
+  volumeContainer: {
+    backgroundColor: '#111',
   },
   summaryContainer: {
     flex: 1,
     padding: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
+  },
+  summaryText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#fff',
+  },
+  sidebar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 250,
+    backgroundColor: '#1a1a1a',
+    borderRightWidth: 1,
+    borderRightColor: '#333',
   },
 });
 
