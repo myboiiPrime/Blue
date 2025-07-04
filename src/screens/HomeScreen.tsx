@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import MiniCandlestickChart from "../components/MiniCandlestickChart";
 import { useTheme } from "../utils/theme";
 import { stockService, CandlestickData } from '../services/api';
+import { getStaticMarketData } from '../services/staticData';
 
 interface MarketData {
   symbol: string;
@@ -121,54 +122,8 @@ export default function HomeScreen() {
       console.error('Error fetching market data:', error);
       Alert.alert('Error', 'Failed to fetch market data. Please check your internet connection.');
       
-      // Set fallback data
-      const fallbackData: MarketData[] = [
-        {
-          symbol: 'AAPL',
-          name: 'Apple Inc.',
-          price: 175.43,
-          change: 2.15,
-          changePercent: 1.24,
-          volume: 45230000,
-          chartData: []
-        },
-        {
-          symbol: 'GOOGL',
-          name: 'Alphabet Inc.',
-          price: 2847.52,
-          change: -12.34,
-          changePercent: -0.43,
-          volume: 1250000,
-          chartData: []
-        },
-        {
-          symbol: 'MSFT',
-          name: 'Microsoft Corp.',
-          price: 378.91,
-          change: 5.67,
-          changePercent: 1.52,
-          volume: 28450000,
-          chartData: []
-        },
-        {
-          symbol: 'AMZN',
-          name: 'Amazon.com Inc.',
-          price: 3342.88,
-          change: -8.92,
-          changePercent: -0.27,
-          volume: 3120000,
-          chartData: []
-        },
-        {
-          symbol: 'TSLA',
-          name: 'Tesla Inc.',
-          price: 248.73,
-          change: 12.45,
-          changePercent: 5.27,
-          volume: 89340000,
-          chartData: []
-        }
-      ];
+      // Use static data service
+      const fallbackData = getStaticMarketData();
       setMarketData(fallbackData);
     } finally {
       setLoading(false);

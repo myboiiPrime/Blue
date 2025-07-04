@@ -1,193 +1,186 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
-import { userStockService, stockService, withTimeout, TimeRange, CandlestickData } from '../services/api';
-import MiniCandlestickChart from '../components/MiniCandlestickChart';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, FlatList } from 'react-native';
+import { userStockService, UserStockDto } from '../services/api';
+import { getStaticPortfolioData } from '../services/staticData';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types/navigation';
 
-// Define the stock interface for type safety
-interface Stock {
-  id: string;
-  symbol: string;
-  quantity: number;
-  currentValue: number;
-  profitLoss: number;
-  profitLossPercentage: number;
-}
+type WatchlistScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-interface StockWithChart extends Stock {
-  chartData: CandlestickData[];
-}
+// Market indices data
+const marketIndices = [
+  {
+    symbol: 'VNINDEX',
+    value: '1,381.56',
+    change: '-0.40',
+    changePercent: '-0.03%',
+    volume: '4.6K bil',
+    isPositive: false
+  },
+  {
+    symbol: 'VN30',
+    value: '1,480.54',
+    change: '-0.66',
+    changePercent: '-0.04%',
+    volume: '1.7K bil',
+    isPositive: false
+  },
+  {
+    symbol: 'HNX',
+    value: '239.87',
+    change: '+1.23',
+    changePercent: '+0.52%',
+    volume: '392M',
+    isPositive: true
+  }
+];
 
 export default function WatchlistScreen() {
-  const [watchlistData, setWatchlistData] = useState<StockWithChart[]>([]);
+  const navigation = useNavigation<WatchlistScreenNavigationProp>();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [portfolioData, setPortfolioData] = useState<UserStockDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState<TimeRange>('1h'); // Changed from '1day' to '1h'
-  const [marketData, setMarketData] = useState<{symbol: string, data: CandlestickData[]}[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   
   useEffect(() => {
-    fetchWatchlistData();
-  }, [timeRange]);
+    fetchPortfolioData();
+  }, []);
   
-  const fetchWatchlistData = async () => {
+  const fetchPortfolioData = async () => {
     try {
       setLoading(true);
+      const response = await userStockService.getUserPortfolio();
+      // Handle potential nested data structure
+      const apiData = response.data || [];
+      const apiPortfolio = Array.isArray(apiData) ? apiData : [];
       
-      // Fetch portfolio data with timeout
-      const portfolioResponse = await withTimeout(
-        userStockService.getUserPortfolio(),
-        10000
-      );
-      const portfolioData = portfolioResponse.data || [];
+      // Get static data to add as additional content
+      const staticData = getStaticPortfolioData();
       
-      // Fetch chart data for each stock
-      const stocksWithCharts = await Promise.all(
-        portfolioData.map(async (stock) => {
-          try {
-            const chartData = await withTimeout(
-              stockService.getHistoricalData(stock.symbol, timeRange),
-              10000
-            );
-            return { ...stock, chartData };
-          } catch (error) {
-            console.error(`Error fetching chart data for ${stock.symbol}:`, error);
-            return { ...stock, chartData: [] };
-          }
-        })
-      );
+      // Combine API data with static data (remove duplicates by symbol)
+      const combinedData = [...apiPortfolio];
+      staticData.forEach(staticStock => {
+        // Only add static stock if it doesn't already exist in API data
+        if (!apiPortfolio.find(apiStock => apiStock.symbol === staticStock.symbol)) {
+          combinedData.push(staticStock);
+        }
+      });
       
-      // Fetch market overview
-      const marketOverview = await withTimeout(
-        stockService.getMarketOverviewWithHistory(timeRange),
-        15000
-      );
-      
-      setWatchlistData(stocksWithCharts);
-      setMarketData(marketOverview);
+      setPortfolioData(combinedData);
     } catch (error) {
-      console.error('Error fetching watchlist:', error);
+      console.error('Error fetching portfolio:', error);
+      Alert.alert('Error', 'Failed to load market data. Showing offline portfolio.');
       
-      if (error.message === 'Network timeout') {
-        Alert.alert(
-          'Connection Timeout',
-          'Unable to connect to the server. You will be redirected to sign in.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Navigate to sign in screen
-                // You'll need to implement navigation logic here
-                console.log('Redirect to sign in');
-              }
-            }
-          ]
-        );
-      } else {
-        Alert.alert('Error', 'Failed to load watchlist');
-      }
-      
-      setWatchlistData([]);
-      setMarketData([]);
+      // Use static data service as fallback when API fails
+      const fallbackData = getStaticPortfolioData();
+      setPortfolioData(fallbackData);
     } finally {
       setLoading(false);
     }
   };
   
-  // const handleTimeRangeChange = (newTimeRange: TimeRange) => {
-  //   setTimeRange(newTimeRange);
-  // };
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchPortfolioData();
+    setRefreshing(false);
+  };
+  
+  const filteredData = portfolioData.filter(item => 
+    item.symbol.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const renderStockItem = ({ item }: { item: UserStockDto }) => (
+    <TouchableOpacity 
+      style={styles.stockItem}
+      onPress={() => navigation.navigate('PortfolioInternal', { symbol: item.symbol })}
+    >
+      <View style={styles.stockInfo}>
+        <Text style={styles.stockSymbol}>{item.symbol}</Text>
+        <Text style={styles.stockName}>Qty: {item.quantity}</Text>
+      </View>
+      <View style={styles.stockPriceInfo}>
+        <Text style={styles.stockPrice}>${item.currentValue.toFixed(2)}</Text>
+        <Text 
+          style={[styles.stockChange, item.profitLoss >= 0 ? styles.positiveChange : styles.negativeChange]}
+        >
+          {item.profitLoss >= 0 ? '+' : ''}${item.profitLoss.toFixed(2)} ({item.profitLossPercentage.toFixed(2)}%)
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
   
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <ActivityIndicator size="large" color="#1E3A8A" />
-        <Text style={styles.loadingText}>Loading watchlist...</Text>
+        <Text style={styles.loadingText}>Loading portfolio...</Text>
       </View>
     );
   }
   
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Your Stocks</Text>
-        
-        {/* Time Range Selector - Commented out for use in another page */}
-        {/* <View style={styles.timeRangeContainer}>
-          {(['1day', '1week', '30days'] as TimeRange[]).map((range) => (
-            <TouchableOpacity
-              key={range}
-              style={[
-                styles.timeRangeButton,
-                timeRange === range && styles.timeRangeButtonActive
-              ]}
-              onPress={() => handleTimeRangeChange(range)}
-            >
-              <Text style={[
-                styles.timeRangeText,
-                timeRange === range && styles.timeRangeTextActive
-              ]}>
-                {range === '1day' ? '1D' : range === '1week' ? '1W' : '30D'}
-              </Text>
-            </TouchableOpacity>
+      {/* Market Overview Section - Top Third */}
+      <View style={styles.marketOverviewContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.marketScrollView}>
+          {marketIndices.map((index, i) => (
+            <View key={index.symbol} style={styles.marketIndexCard}>
+              <View style={styles.marketIndexHeader}>
+                <Text style={styles.marketIndexSymbol}>{index.symbol}</Text>
+                <Text style={styles.marketIndexValue}>{index.value}</Text>
+              </View>
+              <View style={styles.marketIndexDetails}>
+                <Text style={styles.marketIndexVolume}>{index.volume}</Text>
+                <Text style={[styles.marketIndexChange, index.isPositive ? styles.positiveText : styles.negativeText]}>
+                  {index.change} {index.changePercent}
+                </Text>
+              </View>
+              {/* Mini chart placeholder */}
+              <View style={styles.miniChart}>
+                <View style={[styles.chartLine, index.isPositive ? styles.positiveChart : styles.negativeChart]} />
+              </View>
+            </View>
           ))}
-        </View> */}
+        </ScrollView>
       </View>
       
-      <ScrollView style={styles.content}>
-        {/* Market Overview Section */}
-        <View style={styles.marketSection}>
-          <Text style={styles.sectionTitle}>Market Overview</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {marketData.map((market) => (
-              <View key={market.symbol} style={styles.marketCard}>
-                <Text style={styles.marketSymbol}>{market.symbol}</Text>
-                <MiniCandlestickChart 
-                  data={market.data}
-                  symbol={market.symbol}
-                  timeRange={timeRange}
-                  width={100}
-                  height={60}
-                />
-              </View>
-            ))}
-          </ScrollView>
+      {/* My Followings Section */}
+      <View style={styles.followingsSection}>
+        <View style={styles.followingsHeader}>
+          <Text style={styles.followingsTitle}>My followings</Text>
+          <View style={styles.followingsActions}>
+            <TouchableOpacity style={styles.gridButton}>
+              <Text style={styles.gridButtonText}>⊞</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.moreButton}>
+              <Text style={styles.moreButtonText}>⋮</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         
-        {/* Portfolio Section */}
-        <View style={styles.watchlistSection}>
-          <Text style={styles.sectionTitle}>Your Portfolio</Text>
-          {!Array.isArray(watchlistData) || watchlistData.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No stocks in your portfolio</Text>
-            </View>
-          ) : (
-            watchlistData.map((stock) => (
-              <View key={stock.id} style={styles.stockCard}>
-                <View style={styles.stockInfo}>
-                  <View style={styles.stockHeader}>
-                    <Text style={styles.stockSymbol}>{stock.symbol}</Text>
-                    <Text style={styles.stockName}>Qty: {stock.quantity}</Text>
-                  </View>
-                  <View style={styles.stockDetails}>
-                    <Text style={styles.stockPrice}>${stock.currentValue.toFixed(2)}</Text>
-                    <Text style={[
-                      styles.stockChange, 
-                      stock.profitLoss >= 0 ? styles.positiveChange : styles.negativeChange
-                    ]}>
-                      {stock.profitLoss >= 0 ? '+' : ''}${stock.profitLoss.toFixed(2)} ({stock.profitLossPercentage.toFixed(2)}%)
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.chartContainer}>
-                  <MiniCandlestickChart 
-                    data={stock.chartData}
-                    symbol={stock.symbol}
-                    timeRange={timeRange}
-                  />
-                </View>
-              </View>
-            ))
-          )}
+        <View style={styles.tableHeader}>
+          <Text style={styles.tableHeaderText}>Symbol</Text>
+          <Text style={styles.tableHeaderText}>Price +/- (%)</Text>
+          <Text style={styles.tableHeaderText}>Total vol</Text>
         </View>
-      </ScrollView>
+        
+        <FlatList
+          data={filteredData}
+          renderItem={renderStockItem}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.listContent}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <TouchableOpacity style={styles.addSymbolButton}>
+                <Text style={styles.addSymbolText}>+ Add new symbol</Text>
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      </View>
     </View>
   );
 }
@@ -195,149 +188,191 @@ export default function WatchlistScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  // Market Overview Styles
+  marketOverviewContainer: {
     backgroundColor: '#FFFFFF',
-  },
-  header: {
-    paddingTop: 60,
+    paddingTop: 50,
     paddingBottom: 20,
-    paddingHorizontal: 20,
-    backgroundColor: '#1E3A8A',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
   },
-  headerTitle: {
-    fontSize: 24,
+  marketScrollView: {
+    flexDirection: 'row',
+  },
+  marketIndexCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    minWidth: 140,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+  },
+  marketIndexHeader: {
+    marginBottom: 8,
+  },
+  marketIndexSymbol: {
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#212529',
+    marginBottom: 4,
   },
-  content: {
+  marketIndexValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#212529',
+  },
+  marketIndexDetails: {
+    marginBottom: 12,
+  },
+  marketIndexVolume: {
+    fontSize: 12,
+    color: '#6C757D',
+    marginBottom: 2,
+  },
+  marketIndexChange: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  positiveText: {
+    color: '#28A745',
+  },
+  negativeText: {
+    color: '#DC3545',
+  },
+  miniChart: {
+    height: 30,
+    justifyContent: 'center',
+  },
+  chartLine: {
+    height: 2,
+    borderRadius: 1,
+  },
+  positiveChart: {
+    backgroundColor: '#28A745',
+  },
+  negativeChart: {
+    backgroundColor: '#DC3545',
+  },
+  // Followings Section Styles
+  followingsSection: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    marginTop: 8,
+  },
+  followingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 2,
+    borderBottomColor: '#007AFF',
+  },
+  followingsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  followingsActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  gridButton: {
+    padding: 4,
+  },
+  gridButtonText: {
+    fontSize: 18,
+    color: '#6C757D',
+  },
+  moreButton: {
+    padding: 4,
+  },
+  moreButtonText: {
+    fontSize: 18,
+    color: '#6C757D',
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F8F9FA',
+  },
+  tableHeaderText: {
+    fontSize: 14,
+    color: '#6C757D',
+    fontWeight: '500',
     flex: 1,
   },
-  watchlistSection: {
-    padding: 15,
+  // Stock Item Styles (Updated)
+  listContent: {
+    paddingHorizontal: 16,
   },
-  stockCard: {
+  stockItem: {
     flexDirection: 'row',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
   },
   stockInfo: {
     flex: 1,
-    justifyContent: 'space-between',
-  },
-  stockHeader: {
-    marginBottom: 5,
   },
   stockSymbol: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#1E293B',
+    color: '#FFA500', // Orange color for stock symbols
+    marginBottom: 4,
   },
   stockName: {
     fontSize: 14,
-    color: '#64748B',
+    color: '#6C757D',
   },
-  stockDetails: {
-    marginTop: 5,
+  stockPriceInfo: {
+    alignItems: 'flex-end',
+    flex: 1,
   },
   stockPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1E293B',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFA500', // Orange color for price
+    marginBottom: 4,
   },
   stockChange: {
     fontSize: 14,
+    fontWeight: '500',
   },
   positiveChange: {
-    color: '#10B981',
+    color: '#28A745',
   },
   negativeChange: {
-    color: '#EF4444',
+    color: '#DC3545',
   },
-  chartContainer: {
-    width: 80,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1E293B',
-  },
+  // Loading and Empty States
   loadingContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#64748B',
+    color: '#6C757D',
   },
-  // Time Range Selector styles - Commented out for use in another page
-  // timeRangeContainer: {
-  //   flexDirection: 'row',
-  //   marginTop: 10,
-  //   backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  //   borderRadius: 8,
-  //   padding: 2,
-  // },
-  // timeRangeButton: {
-  //   flex: 1,
-  //   paddingVertical: 8,
-  //   paddingHorizontal: 12,
-  //   borderRadius: 6,
-  //   alignItems: 'center',
-  // },
-  // timeRangeButtonActive: {
-  //   backgroundColor: '#FFFFFF',
-  // },
-  // timeRangeText: {
-  //   fontSize: 14,
-  //   fontWeight: '600',
-  //   color: 'rgba(255, 255, 255, 0.8)',
-  // },
-  // timeRangeTextActive: {
-  //   color: '#1E3A8A',
-  // },
-  marketSection: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 10,
-  },
-  marketCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
-    padding: 10,
-    marginRight: 10,
+  emptyContainer: {
+    paddingVertical: 32,
     alignItems: 'center',
-    minWidth: 120,
   },
-  marketSymbol: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1E293B',
-    marginBottom: 5,
+  addSymbolButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
   },
-  
-  // Remove the duplicated properties below:
-  // chartContainer, emptyContainer, emptyText, loadingContainer, loadingText are duplicated
+  addSymbolText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
 });

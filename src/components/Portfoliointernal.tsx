@@ -169,6 +169,19 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   };
   
   // Pan responder for chart interactions
+  // Unified tooltip positioning function
+  const setUnifiedTooltipPosition = (locationX: number, locationY: number, data: any, index: number) => {
+    setTooltipData({
+      x: locationX,
+      y: locationY,
+      candle: data,
+      index: index
+    });
+    setTooltipPosition({ x: locationX, y: locationY });
+    setShowTooltip(true);
+  };
+
+  // Pan responder for chart interactions
   const chartPanResponder = PanResponder.create({
     onMoveShouldSetPanResponder: () => true,
     onPanResponderMove: (evt, gestureState) => {
@@ -182,7 +195,6 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
       animateChartScale(1);
     },
   });
-  
   // Divider pan responder
   // Add this variable to track position during pan
   let lastDividerPosition = screenHeight * 0.6;
@@ -231,6 +243,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
     const priceRange = maxPrice - minPrice;
     const padding = priceRange * 0.1;
     
+    // Update handleChartTouch function
     const handleChartTouch = (event: any) => {
       const { locationX, locationY } = event.nativeEvent;
       const candleWidth = screenWidth / candlestickData.length;
@@ -238,19 +251,23 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
       
       if (candleIndex >= 0 && candleIndex < candlestickData.length) {
         const candle = candlestickData[candleIndex];
-        setTooltipData({
-          x: locationX,
-          y: locationY,
-          candle,
-          index: candleIndex
-        });
-        setTooltipPosition({ x: locationX, y: locationY });
-        setShowTooltip(true);
+        setUnifiedTooltipPosition(locationX, locationY, candle, candleIndex);
       }
     };
 
+    // Update handleVolumeTouch function
+    const handleVolumeTouch = (event: any) => {
+      const { locationX, locationY } = event.nativeEvent;
+      const barWidth = screenWidth / volumeData.length;
+      const touchedIndex = Math.floor(locationX / barWidth);
+      
+      if (touchedIndex >= 0 && touchedIndex < volumeData.length) {
+        setUnifiedTooltipPosition(locationX, locationY, volumeData[touchedIndex], touchedIndex);
+      }
+    };
+    
     const handleTouchEnd = () => {
-      setTimeout(() => setShowTooltip(false), 2000); // Hide after 2 seconds
+      setTimeout(() => setShowTooltip(false), 2000);
     };
     
     return (
@@ -332,23 +349,15 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
     const handleVolumeTouch = (event: any) => {
       const { locationX, locationY } = event.nativeEvent;
       const barWidth = screenWidth / volumeData.length;
-      const barIndex = Math.floor(locationX / barWidth);
+      const touchedIndex = Math.floor(locationX / barWidth);
       
-      if (barIndex >= 0 && barIndex < volumeData.length) {
-        const candle = volumeData[barIndex];
-        setTooltipData({
-          x: locationX,
-          y: locationY + chartHeight,
-          candle,
-          index: barIndex
-        });
-        // Position tooltip directly above the volume bars
-        // Calculate the actual position: chartHeight + volume header height + touched bar position
-        const volumeHeaderHeight = 30; // Approximate height of volume header
-        const tooltipY = chartHeight + volumeHeaderHeight + locationY - 130; // 130px above the touched point
-        setTooltipPosition({ x: locationX, y: tooltipY });
-        setShowTooltip(true);
+      if (touchedIndex >= 0 && touchedIndex < volumeData.length) {
+        setUnifiedTooltipPosition(locationX, locationY, volumeData[touchedIndex], touchedIndex);
       }
+    };
+    
+    const handleTouchEnd = () => {
+      setTimeout(() => setShowTooltip(false), 2000);
     };
     
     return (
@@ -401,9 +410,11 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
         style={[
           styles.tooltip,
           {
-            left: tooltipPosition.x - 80,
-            top: tooltipPosition.y - 120,
-          }
+            position: 'absolute',
+            left: Math.max(10, Math.min(tooltipPosition.x - 60, screenWidth - 130)),
+            top: tooltipPosition.y - 80, // Consistent offset for both charts
+            zIndex: 1000,
+          },
         ]}
       >
         <View style={styles.tooltipContent}>
