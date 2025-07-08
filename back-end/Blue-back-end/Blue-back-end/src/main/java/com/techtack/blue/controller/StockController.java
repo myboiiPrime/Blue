@@ -19,6 +19,11 @@ public class StockController {
     @Autowired
     private StockService stockService;
 
+    @GetMapping
+    public ResponseEntity<List<StockDto>> getAllStocks() {
+        List<StockDto> stocks = stockService.getAllStocks();
+        return new ResponseEntity<>(stocks, HttpStatus.OK);
+    }
     
     @GetMapping("/search")
     public ResponseEntity<?> searchStocks(@Valid @RequestParam String query) {
@@ -45,28 +50,25 @@ public class StockController {
         List<StockDto> topTraded = stockService.getTopTradedStocks();
         List<StockDto> topGainers = stockService.getTopGainers();
         List<StockDto> topLosers = stockService.getTopLosers();
-        List<StockDto> indices = stockService.getAllMarketIndices();
         
         response.put("topTraded", topTraded);
         response.put("topGainers", topGainers);
         response.put("topLosers", topLosers);
-        response.put("marketIndices", indices);
         
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
     
-    @GetMapping("/market-indices")
-    public ResponseEntity<List<StockDto>> getAllMarketIndices() {
-        List<StockDto> indices = stockService.getAllMarketIndices();
-        return new ResponseEntity<>(indices, HttpStatus.OK);
+    @GetMapping("/by-industry/{industry}")
+    public ResponseEntity<List<StockDto>> getStocksByIndustry(@Valid @PathVariable String industry) {
+        List<StockDto> stocks = stockService.getStocksByIndustry(industry);
+        return new ResponseEntity<>(stocks, HttpStatus.OK);
     }
     
-    @GetMapping("/market-indices/{code}")
-    public ResponseEntity<?> getMarketIndexByCode(@Valid @PathVariable String code) {
-        StockDto index = stockService.getMarketIndexByCode(code);
-        if (index == null) {
-            return new ResponseEntity<>("Market index not found with code: " + code, HttpStatus.NOT_FOUND);
-        }
-        return new ResponseEntity<>(index, HttpStatus.OK);
+    @GetMapping("/by-market-cap")
+    public ResponseEntity<List<StockDto>> getStocksByMarketCap(
+            @RequestParam(defaultValue = "0") double min,
+            @RequestParam(defaultValue = "1000000000000") double max) {
+        List<StockDto> stocks = stockService.getStocksByMarketCapRange(min, max);
+        return new ResponseEntity<>(stocks, HttpStatus.OK);
     }
 }

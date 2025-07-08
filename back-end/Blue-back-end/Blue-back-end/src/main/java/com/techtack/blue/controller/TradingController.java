@@ -1,5 +1,19 @@
 package com.techtack.blue.controller;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.techtack.blue.model.Order;
 import com.techtack.blue.model.OrderSide;
 import com.techtack.blue.model.OrderStatus;
@@ -7,16 +21,9 @@ import com.techtack.blue.model.OrderType;
 import com.techtack.blue.model.Trading;
 import com.techtack.blue.repository.TradingRepository;
 import com.techtack.blue.service.TradingService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 
 @RestController
-@RequestMapping("/api/trading")
+@RequestMapping("/trading")
 public class TradingController {
 
     @Autowired
@@ -27,7 +34,6 @@ public class TradingController {
 
     @PostMapping("/orders")
     public ResponseEntity<Order> placeOrder(@RequestBody Order order, @RequestParam("userId") Long userId) {
-        // Default to NORMAL order type if not specified
         if (order.getOrderType() == null) {
             order.setOrderType(OrderType.NORMAL);
         }
@@ -35,6 +41,9 @@ public class TradingController {
         // Route to specific order placement method based on order type
         Order placedOrder;
         switch (order.getOrderType()) {
+            case NORMAL:
+                placedOrder = tradingService.placeNormalOrder(order, userId);
+                break;
             case STOP:
                 placedOrder = tradingService.placeStopOrder(order, userId);
                 break;
@@ -65,8 +74,7 @@ public class TradingController {
     // Specific endpoints for each order type
     @PostMapping("/orders/normal")
     public ResponseEntity<Order> placeNormalOrder(@RequestBody Order order, @RequestParam("userId") Long userId) {
-        order.setOrderType(OrderType.NORMAL);
-        return ResponseEntity.ok(tradingService.placeOrder(order, userId));
+        return ResponseEntity.ok(tradingService.placeNormalOrder(order, userId));
     }
     
     @PostMapping("/orders/gtd")

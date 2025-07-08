@@ -53,18 +53,19 @@ public class StockService {
         return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
     }
     
-    // Market index methods (previously in MarketService)
-    public List<StockDto> getAllMarketIndices() {
-        List<Stock> indices = stockRepository.findAllMarketIndices();
-        return indices.stream().map(this::convertToDto).collect(Collectors.toList());
+    public List<StockDto> getStocksByIndustry(String industry) {
+        List<Stock> stocks = stockRepository.findByIndustry(industry);
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
     }
     
-    public StockDto getMarketIndexByCode(String code) {
-        Stock index = stockRepository.findByCodeAndIsMarketIndexTrue(code);
-        if (index == null) {
-            return null;
-        }
-        return convertToDto(index);
+    public List<StockDto> getStocksByMarketCapRange(double minMarketCap, double maxMarketCap) {
+        List<Stock> stocks = stockRepository.findByMarketCapRange(minMarketCap, maxMarketCap);
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
+    }
+
+    public List<StockDto> getAllStocks() {
+        List<Stock> stocks = stockRepository.findAll();
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
     }
 
     private StockDto convertToDto(Stock stock) {
@@ -79,24 +80,15 @@ public class StockService {
         dto.setPreviousClose(stock.getPreviousClose());
         dto.setVolume(stock.getVolume());
         dto.setLastUpdated(stock.getLastUpdated());
+        dto.setIndustry(stock.getIndustry());
+        dto.setMarketCap(stock.getMarketCap());
         
-        // Set market index specific fields
-        dto.setMarketIndex(stock.isMarketIndex());
-        dto.setCode(stock.getCode());
+        // Calculate change amount and percentage
+        double changeAmount = stock.getPrice() - stock.getPreviousClose();
+        double changePercent = (changeAmount / stock.getPreviousClose()) * 100;
         
-        // For regular stocks, calculate change amount and percentage
-        if (!stock.isMarketIndex()) {
-            double changeAmount = stock.getPrice() - stock.getPreviousClose();
-            double changePercent = (changeAmount / stock.getPreviousClose()) * 100;
-            
-            dto.setChangeAmount(changeAmount);
-            dto.setChangePercent(changePercent);
-        } else {
-            // For market indices, use the stored change values
-            dto.setChange(stock.getChange());
-            dto.setChangeAmount(stock.getChange());
-            dto.setChangePercent(stock.getChangePercent());
-        }
+        dto.setChangeAmount(changeAmount);
+        dto.setChangePercent(changePercent);
         
         return dto;
     }

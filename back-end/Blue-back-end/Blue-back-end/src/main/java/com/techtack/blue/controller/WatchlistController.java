@@ -53,7 +53,7 @@ public class WatchlistController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{watchlistId}/items")
+    @PostMapping("/{watchlistId}/stocks")
     public ResponseEntity<WatchlistItemDto> addStockToWatchlist(
             @PathVariable Long watchlistId,
             @RequestParam Long stockId,
@@ -61,17 +61,17 @@ public class WatchlistController {
         return ResponseEntity.ok(watchlistService.addStockToWatchlist(watchlistId, stockId, userId));
     }
 
-    @DeleteMapping("/{watchlistId}/items/{itemId}")
+    @DeleteMapping("/{watchlistId}/stocks/{stockItemId}")
     public ResponseEntity<Void> removeStockFromWatchlist(
             @PathVariable Long watchlistId,
-            @PathVariable Long itemId,
+            @PathVariable Long stockItemId,
             @RequestParam Long userId) {
-        watchlistService.removeStockFromWatchlist(watchlistId, itemId, userId);
+        watchlistService.removeStockFromWatchlist(watchlistId, stockItemId, userId);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/{watchlistId}/items")
-    public ResponseEntity<List<WatchlistItemDto>> getWatchlistItems(
+    @GetMapping("/{watchlistId}/stocks")
+    public ResponseEntity<List<WatchlistItemDto>> getWatchlistStocks(
             @PathVariable Long watchlistId,
             @RequestParam Long userId) {
         return ResponseEntity.ok(watchlistService.getWatchlistItems(watchlistId, userId));

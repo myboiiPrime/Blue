@@ -472,3 +472,223 @@ export const withTimeout = <T>(promise: Promise<T>, timeoutMs: number = 10000): 
     )
   ]);
 };
+
+// Add new interfaces for the backend integration
+export interface OrderDto {
+  id: string;
+  symbol: string;
+  quantity: number;
+  price: number;
+  orderType: string;
+  side: 'BUY' | 'SELL';
+  status: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface MarketDataDto {
+  indices: any[];
+  activeStocks: any[];
+  topGainers: any[];
+  topLosers: any[];
+  netFlow?: any;
+  industryHeatmap?: any[];
+  majorImpactStocks?: any[];
+  marketMovers?: any[];
+  foreignTrading?: any;
+  marketLiquidity?: any;
+}
+
+export interface StockSearchDto {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  industry?: string;
+  marketCap?: number;
+}
+
+// 2. Advanced Order Types Service
+export const tradingService = {
+  // Place different order types
+  placeNormalOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-normal-order', orderData),
+  
+  placeStopOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-stop-order', orderData),
+  
+  placeStopLimitOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-stop-limit-order', orderData),
+  
+  placeTrailingStopOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-trailing-stop-order', orderData),
+  
+  placeTrailingStopLimitOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-trailing-stop-limit-order', orderData),
+  
+  placeOCOOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-oco-order', orderData),
+  
+  placeGTDOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL', expiryDate: string}) => 
+    api.post('/trading/place-gtd-order', orderData),
+  
+  placeStopLossTakeProfitOrder: (orderData: {symbol: string, quantity: number, stopLossPrice: number, takeProfitPrice: number, side: 'BUY' | 'SELL'}) => 
+    api.post('/trading/place-stop-loss-take-profit-order', orderData),
+  
+  // Order management
+  getOpenOrders: () => api.get<OrderDto[]>('/trading/orders/open'),
+  
+  getOrdersByType: (orderType: string) => api.get<OrderDto[]>(`/trading/orders/by-type/${orderType}`),
+  
+  getOrdersByStatus: (status: string) => api.get<OrderDto[]>(`/trading/orders/by-status/${status}`),
+  
+  getOrderById: (orderId: string) => api.get<OrderDto>(`/trading/orders/${orderId}`),
+  
+  cancelOrder: (orderId: string) => api.delete(`/trading/orders/${orderId}/cancel`),
+  
+  // Get available options
+  getOrderTypes: () => api.get<string[]>('/trading/order-types'),
+  
+  getOrderSides: () => api.get<string[]>('/trading/order-sides'),
+  
+  getOrderStatuses: () => api.get<string[]>('/trading/order-statuses'),
+  
+  // Trading records
+  getTradingRecordsByAccount: (accountId: string) => api.get(`/trading/records/account/${accountId}`),
+  
+  getTradingRecordsBySymbol: (symbol: string) => api.get(`/trading/records/symbol/${symbol}`),
+  
+  getTradingRecordsByType: (type: string) => api.get(`/trading/records/type/${type}`),
+  
+  getTradingRecordsByStatus: (status: string) => api.get(`/trading/records/status/${status}`)
+};
+
+// 3. Market Analytics Service
+export const marketAnalyticsService = {
+  // Dashboard market data
+  getMarketData: () => api.get<MarketDataDto>('/dashboard/market-data'),
+  
+  // Market overview with backend data
+  getMarketOverview: () => api.get('/stocks/market-overview'),
+  
+  // Stocks by industry
+  getStocksByIndustry: (industry: string) => api.get(`/stocks/by-industry/${industry}`),
+  
+  // Stocks by market cap
+  getStocksByMarketCap: (params: {minMarketCap?: number, maxMarketCap?: number}) => 
+    api.get('/stocks/by-market-cap', { params }),
+  
+  // Market indices (from MarketService)
+  getMarketIndices: () => api.get('/market/indices'),
+  
+  // Net flow data
+  getNetFlow: () => api.get('/market/net-flow'),
+  
+  // Industry heatmap
+  getIndustryHeatmap: () => api.get('/market/industry-heatmap'),
+  
+  // Major impact stocks
+  getMajorImpactStocks: () => api.get('/market/major-impact-stocks'),
+  
+  // Market movers
+  getMarketMovers: () => api.get('/market/movers'),
+  
+  // Foreign trading data
+  getForeignTradingData: () => api.get('/market/foreign-trading'),
+  
+  // Market liquidity
+  getMarketLiquidity: () => api.get('/market/liquidity')
+};
+
+// 6. Enhanced Search Service
+export const enhancedSearchService = {
+  // Backend stock search
+  searchStocks: (query: string) => api.get<StockSearchDto[]>(`/stocks/search?query=${encodeURIComponent(query)}`),
+  
+  // Get all stocks
+  getAllStocks: () => api.get<StockSearchDto[]>('/stocks'),
+  
+  // Get stock details
+  getStockDetails: (symbol: string) => api.get(`/stocks/${symbol}`)
+};
+
+// Replace the mock userStockService with real backend integration
+export const realPortfolioService = {
+  getUserPortfolio: async (): Promise<{data: UserStockDto[]}> => {
+    try {
+      const response = await api.get('/api/user-stocks/portfolio');
+      return { data: response.data };
+    } catch (error) {
+      console.error('Error fetching portfolio:', error);
+      throw error;
+    }
+  },
+  
+  buyStock: async (symbol: string, quantity: number): Promise<{data: UserStockDto}> => {
+    try {
+      const response = await api.post('/api/user-stocks/buy', null, {
+        params: { symbol, quantity }
+      });
+      return { data: response.data };
+    } catch (error) {
+      console.error('Error buying stock:', error);
+      throw error;
+    }
+  },
+  
+  sellStock: async (symbol: string, quantity: number): Promise<{data: UserStockDto}> => {
+    try {
+      const response = await api.post('/api/user-stocks/sell', null, {
+        params: { symbol, quantity }
+      });
+      return { data: response.data };
+    } catch (error) {
+      console.error('Error selling stock:', error);
+      throw error;
+    }
+  }
+};
+
+// Remove the old mock userStockService
+export const enhancedUserService = {
+  getUserProfile: () => api.get<UserDto>('/api/users/profile'),
+  
+  // Additional user endpoints if needed
+  updateUserProfile: (userData: Partial<UserDto>) => api.put('/api/users/profile', userData)
+};
+
+// Watchlist Service
+export const watchlistService = {
+  // Create watchlist
+  createWatchlist: (watchlistData: {name: string, description?: string}) => 
+    api.post('/watchlists', watchlistData),
+  
+  // Add stock to watchlist
+  addStockToWatchlist: (watchlistId: string, symbol: string) => 
+    api.post(`/watchlists/${watchlistId}/stocks`, { symbol }),
+  
+  // Remove stock from watchlist
+  removeStockFromWatchlist: (watchlistId: string, symbol: string) => 
+    api.delete(`/watchlists/${watchlistId}/stocks/${symbol}`),
+  
+  // Get watchlist symbols
+  getWatchlistSymbols: (watchlistId: string) => 
+    api.get<string[]>(`/watchlists/${watchlistId}/symbols`),
+  
+  // Get watchlist items with details
+  getWatchlistItems: (watchlistId: string) => 
+    api.get(`/watchlists/${watchlistId}/items`),
+  
+  // Get user's watchlists
+  getUserWatchlists: (userId: string) => 
+    api.get(`/watchlists/user/${userId}`),
+  
+  // Update watchlist
+  updateWatchlist: (watchlistId: string, watchlistData: {name?: string, description?: string}) => 
+    api.put(`/watchlists/${watchlistId}`, watchlistData),
+  
+  // Delete watchlist
+  deleteWatchlist: (watchlistId: string) => 
+    api.delete(`/watchlists/${watchlistId}`)
+};

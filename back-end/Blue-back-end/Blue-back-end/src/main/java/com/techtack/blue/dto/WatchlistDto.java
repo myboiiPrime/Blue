@@ -9,7 +9,7 @@ public class WatchlistDto {
     private String name;
     private Long userId;
     private LocalDateTime createdAt;
-    private List<WatchlistItemDto> items = new ArrayList<>();
+    private List<String> symbols = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -43,11 +43,11 @@ public class WatchlistDto {
         this.createdAt = createdAt;
     }
 
-    public List<WatchlistItemDto> getItems() {
-        return items;
+    public List<String> getSymbols() {
+        return symbols;
     }
 
-    public void setItems(List<WatchlistItemDto> items) {
-        this.items = items;
+    public void setSymbols(List<String> symbols) {
+        this.symbols = symbols;
     }
 }

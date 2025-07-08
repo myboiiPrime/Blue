@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 
 @Data
 public class UserDto {
-    private String fullName;
+    private String username;
     private String location;
     private String birthDate;
     private String email;
@@ -20,12 +20,12 @@ public class UserDto {
     private LocalDateTime verificationEndTime;
     private String token;
 
-    public String getFullName() {
-        return fullName;
+    public String getUsername() {
+        return username;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getLocation() {

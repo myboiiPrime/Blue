@@ -38,14 +38,8 @@ public class UserController {
     }
 
     @DeleteMapping("/{userId}")
-    public ResponseEntity<String> deleteUser(@Valid @PathVariable Long userId) throws UserException{
-        User user = userService.findUserById(userId);
-        UserDto userDto = UserDtoMapper.toUserDto(user);
-        boolean isDeleted = userService.deleteUser(userId);
-        if (isDeleted) {
-            return new ResponseEntity<>("User Deleted", HttpStatus.OK);
-        } else {
-            return new ResponseEntity<>("User Not Found", HttpStatus.OK);
-        }
+    public ResponseEntity<String> deleteUser(@Valid @PathVariable Long userId) throws UserException {
+        userService.deleteUser(userId);
+        return new ResponseEntity<>("User Deleted", HttpStatus.OK);
     }
 }

@@ -9,6 +9,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { STATIC_STOCKS, StaticStock } from '../services/staticData';
+import { enhancedSearchService } from '../services/api';
 
 interface StockSearchScreenProps {
   onStockSelect: (stock: StaticStock) => void;
@@ -285,3 +286,13 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
 });
+
+const searchStocks = async (query: string) => {
+  try {
+    const response = await enhancedSearchService.searchStocks(query);
+    setSearchResults(response.data);
+  } catch (error) {
+    console.error('Error searching stocks:', error);
+    // Fallback to static data
+  }
+};

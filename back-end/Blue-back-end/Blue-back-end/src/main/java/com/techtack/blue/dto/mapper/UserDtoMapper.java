@@ -10,7 +10,7 @@ public class UserDtoMapper {
     public static UserDto toUserDto(User user) {
         UserDto userDto=new UserDto();
         userDto.setEmail(user.getEmail());
-        userDto.setFullName(user.getFullName());
+        userDto.setUsername(user.getUsername());
         userDto.setIdentification_card(user.getIdentification_card());
         userDto.setLocation(user.getLocation());
 
@@ -20,7 +20,7 @@ public class UserDtoMapper {
     public static User toUser(UserDto userDto) {
         User user = new User();
         user.setEmail(userDto.getEmail());
-        user.setFullName(userDto.getFullName());
+        user.setUsername(userDto.getUsername());
         user.setIdentification_card(userDto.getIdentification_card());
         user.setLocation(userDto.getLocation());
         user.setPassword(userDto.getPassword());

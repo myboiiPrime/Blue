@@ -14,7 +14,7 @@ import {
 } from 'react-native-gesture-handler';
 import { Svg, Rect, Line, Text as SvgText } from 'react-native-svg';
 import { useTheme } from '../utils/theme';
-import { CandlestickData, TimeRange, stockService } from '../services/api';
+import { CandlestickData, TimeRange, stockService, realPortfolioService, UserStockDto } from '../services/api';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import ChartDrawingTool from './ChartDrawingTool';
 import CandlestickBackground from './CandlestickBackground';
@@ -31,6 +31,11 @@ interface PortfolioData {
   totalValue: number;
   foreignBuyVolume: number;
   foreignSellVolume: number;
+  // Add portfolio-specific fields
+  holdings?: UserStockDto[];
+  totalPortfolioValue?: number;
+  totalGainLoss?: number;
+  totalGainLossPercent?: number;
 }
 
 interface DrawingTool {
@@ -78,6 +83,9 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
     foreignBuyVolume: 19097024,
     foreignSellVolume: 29348662,
   });
+  const [portfolioHoldings, setPortfolioHoldings] = useState<UserStockDto[]>([]);
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
   
   // Chart controls
   const [chartHeight, setChartHeight] = useState(screenHeight * 0.4);
@@ -105,6 +113,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
   useEffect(() => {
     loadChartData();
     loadStockData();
+    loadPortfolioData(); // Add this line
   }, [selectedSymbol, timeRange]);
 
   useEffect(() => {
@@ -147,6 +156,46 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
       }
     } catch (error) {
       console.error('Error loading stock data:', error);
+    }
+  };
+
+  // Add this new function after loadStockData
+  const loadPortfolioData = async () => {
+    setIsLoadingPortfolio(true);
+    setPortfolioError(null);
+    
+    try {
+      const response = await realPortfolioService.getUserPortfolio();
+      const holdings = response.data.data || [];
+      setPortfolioHoldings(holdings);
+      
+      // Calculate portfolio totals
+      const totalValue = holdings.reduce((sum, holding) => {
+        return sum + (holding.quantity * holding.purchasePrice);
+      }, 0);
+      
+      const totalCurrentValue = holdings.reduce((sum, holding) => {
+        return sum + holding.currentValue;
+      }, 0);
+      
+      const totalGainLoss = totalCurrentValue - totalValue;
+      const totalGainLossPercent = totalValue > 0 ? (totalGainLoss / totalValue) * 100 : 0;
+      
+      // Update portfolio data with real values
+      setPortfolioData(prev => ({
+        ...prev,
+        totalPortfolioValue: totalCurrentValue,
+        totalGainLoss,
+        totalGainLossPercent,
+        holdings
+      }));
+      
+    } catch (error) {
+      console.error('Error loading portfolio data:', error);
+      setPortfolioError('Failed to load portfolio data');
+      // Fallback to existing mock data behavior
+    } finally {
+      setIsLoadingPortfolio(false);
     }
   };
 
@@ -393,6 +442,69 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
       </View>
     );
   };
+  const renderPortfolioSummary = () => {
+    if (isLoadingPortfolio) {
+      return (
+        <View style={styles.portfolioContainer}>
+          <ThemedText style={styles.loadingText}>Loading portfolio...</ThemedText>
+        </View>
+      );
+    }
+    
+    if (portfolioError) {
+      return (
+        <View style={styles.portfolioContainer}>
+          <ThemedText style={styles.errorText}>{portfolioError}</ThemedText>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.portfolioContainer}>
+        <ThemedText style={styles.portfolioTitle}>Portfolio Summary</ThemedText>
+        
+        <View style={styles.portfolioStats}>
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>Total Value</ThemedText>
+            <ThemedText style={styles.statValue}>
+              ${portfolioData.totalPortfolioValue?.toFixed(2) || '0.00'}
+            </ThemedText>
+          </View>
+          
+          <View style={styles.statItem}>
+            <ThemedText style={styles.statLabel}>Total Gain/Loss</ThemedText>
+            <ThemedText style={[
+              styles.statValue,
+              { color: (portfolioData.totalGainLoss || 0) >= 0 ? '#4CAF50' : '#F44336' }
+            ]}>
+              ${portfolioData.totalGainLoss?.toFixed(2) || '0.00'} 
+              ({portfolioData.totalGainLossPercent?.toFixed(2) || '0.00'}%)
+            </ThemedText>
+          </View>
+        </View>
+        
+        <View style={styles.holdingsList}>
+          <ThemedText style={styles.holdingsTitle}>Holdings</ThemedText>
+          {portfolioHoldings.map((holding, index) => (
+            <View key={index} style={styles.holdingItem}>
+              <View style={styles.holdingInfo}>
+                <ThemedText style={styles.holdingSymbol}>{holding.symbol}</ThemedText>
+                <ThemedText style={styles.holdingQuantity}>
+                  {holding.quantity} shares @ ${holding.purchasePrice.toFixed(2)}
+                </ThemedText>
+              </View>
+              <View style={styles.holdingValue}>
+                <ThemedText style={styles.holdingCurrentValue}>
+                  ${holding.currentValue.toFixed(2)}
+                </ThemedText>
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   const renderTooltip = () => {
     if (!showTooltip || !tooltipData) return null;
 
@@ -596,16 +708,7 @@ const Portfoliointernal: React.FC<PortfolioInternalProps> = ({ route: propRoute 
             </View>
           )}
           
-          {activeTab === 'Summary' && (
-            <View style={styles.summaryContainer}>
-              <ThemedText style={styles.summaryText}>
-                Portfolio Summary for {portfolioData.symbol}
-              </ThemedText>
-              <ThemedText style={styles.summaryDetail}>Current Price: ${portfolioData.currentPrice.toFixed(2)}</ThemedText>
-              <ThemedText style={styles.summaryDetail}>Daily Change: {portfolioData.dailyChange.toFixed(2)} ({portfolioData.dailyChangePercent.toFixed(2)}%)</ThemedText>
-              <ThemedText style={styles.summaryDetail}>Volume: {portfolioData.totalVolume.toLocaleString()}</ThemedText>
-            </View>
-          )}
+          {activeTab === 'Summary' && renderPortfolioSummary()}
         </View>
       </View>
 
@@ -740,19 +843,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderLeftWidth: 1, // Add separator line
     borderLeftColor: '#E5E5E5',
-  },
-  statItem: {
-    marginBottom: 12,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#666666',
-    marginBottom: 2,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#000000',
   },
   tabContainer: {
     flexDirection: 'row',
@@ -917,22 +1007,7 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '600',
   },
-  summaryContainer: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  summaryText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#000000',
-  },
-  summaryDetail: {
-    fontSize: 14,
-    color: '#000000',
-    marginBottom: 8,
-  },
+
   sidebar: {
     position: 'absolute',
     left: 0,
@@ -986,6 +1061,88 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11, // Slightly smaller
     fontWeight: '600',
+  },
+  portfolioContainer: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  portfolioTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    color: '#1F2937',
+  },
+  portfolioStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  holdingsList: {
+    flex: 1,
+  },
+  holdingsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1F2937',
+  },
+  holdingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  holdingInfo: {
+    flex: 1,
+  },
+  holdingSymbol: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  holdingQuantity: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  holdingValue: {
+    alignItems: 'flex-end',
+  },
+  holdingCurrentValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginTop: 40,
   },
 });
 

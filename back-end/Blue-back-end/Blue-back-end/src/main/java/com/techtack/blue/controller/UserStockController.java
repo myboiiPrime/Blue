@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/user-stocks")
+@RequestMapping("/user-stocks")
 public class UserStockController {
 
     @Autowired
@@ -23,10 +23,14 @@ public class UserStockController {
     private UserService userService;
 
     @GetMapping("/portfolio")
-    public ResponseEntity<List<UserStockDto>> getUserPortfolio() {
-        User user = userService.findUserProfileByJwt(null);
-        List<UserStockDto> portfolio = userStockService.getUserStocks(user.getId());
-        return new ResponseEntity<>(portfolio, HttpStatus.OK);
+    public ResponseEntity<?> getUserPortfolio() {
+        try {
+            User user = userService.findUserProfileByJwt(null);
+            List<UserStockDto> portfolio = userStockService.getUserStocks(user.getId());
+            return new ResponseEntity<>(portfolio, HttpStatus.OK);
+        } catch (UserException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
     }
 
     @PostMapping("/buy")

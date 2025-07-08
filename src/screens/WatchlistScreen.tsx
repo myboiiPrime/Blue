@@ -1,40 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, FlatList } from 'react-native';
-import { userStockService, UserStockDto } from '../services/api';
-import { getStaticPortfolioData } from '../services/staticData';
+import { realPortfolioService, marketAnalyticsService, UserStockDto } from '../services/api';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
+import { watchlistService } from '../services/api';
 
 type WatchlistScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Market indices data
-const marketIndices = [
-  {
-    symbol: 'VNINDEX',
-    value: '1,381.56',
-    change: '-0.40',
-    changePercent: '-0.03%',
-    volume: '4.6K bil',
-    isPositive: false
-  },
-  {
-    symbol: 'VN30',
-    value: '1,480.54',
-    change: '-0.66',
-    changePercent: '-0.04%',
-    volume: '1.7K bil',
-    isPositive: false
-  },
-  {
-    symbol: 'HNX',
-    value: '239.87',
-    change: '+1.23',
-    changePercent: '+0.52%',
-    volume: '392M',
-    isPositive: true
-  }
-];
+
 
 export default function WatchlistScreen() {
   const navigation = useNavigation<WatchlistScreenNavigationProp>();
@@ -42,6 +16,7 @@ export default function WatchlistScreen() {
   const [portfolioData, setPortfolioData] = useState<UserStockDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [marketIndices, setMarketIndices] = useState<any[]>([]);
   
   useEffect(() => {
     fetchPortfolioData();
@@ -50,31 +25,53 @@ export default function WatchlistScreen() {
   const fetchPortfolioData = async () => {
     try {
       setLoading(true);
-      const response = await userStockService.getUserPortfolio();
-      // Handle potential nested data structure
+      
+      // Fetch portfolio data from backend only
+      const response = await realPortfolioService.getUserPortfolio();
       const apiData = response.data || [];
       const apiPortfolio = Array.isArray(apiData) ? apiData : [];
       
-      // Get static data to add as additional content
-      const staticData = getStaticPortfolioData();
+      setPortfolioData(apiPortfolio);
       
-      // Combine API data with static data (remove duplicates by symbol)
-      const combinedData = [...apiPortfolio];
-      staticData.forEach(staticStock => {
-        // Only add static stock if it doesn't already exist in API data
-        if (!apiPortfolio.find(apiStock => apiStock.symbol === staticStock.symbol)) {
-          combinedData.push(staticStock);
-        }
-      });
+      // Fetch market overview for indices
+      try {
+        const marketOverview = await marketAnalyticsService.getMarketOverview();
+        const dynamicIndices = [
+          {
+            symbol: 'TOP TRADED',
+            value: marketOverview.topTraded[0]?.price.toFixed(2) || '0.00',
+            volume: `${(marketOverview.topTraded[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
+            change: `${marketOverview.topTraded[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topTraded[0]?.changeAmount.toFixed(2)}`,
+            changePercent: `(${marketOverview.topTraded[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topTraded[0]?.changePercent.toFixed(2)}%)`,
+            isPositive: marketOverview.topTraded[0]?.changeAmount >= 0
+          },
+          {
+            symbol: 'TOP GAINERS',
+            value: marketOverview.topGainers[0]?.price.toFixed(2) || '0.00',
+            volume: `${(marketOverview.topGainers[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
+            change: `${marketOverview.topGainers[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topGainers[0]?.changeAmount.toFixed(2)}`,
+            changePercent: `(${marketOverview.topGainers[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topGainers[0]?.changePercent.toFixed(2)}%)`,
+            isPositive: marketOverview.topGainers[0]?.changeAmount >= 0
+          },
+          {
+            symbol: 'TOP LOSERS',
+            value: marketOverview.topLosers[0]?.price.toFixed(2) || '0.00',
+            volume: `${(marketOverview.topLosers[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
+            change: `${marketOverview.topLosers[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topLosers[0]?.changeAmount.toFixed(2)}`,
+            changePercent: `(${marketOverview.topLosers[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topLosers[0]?.changePercent.toFixed(2)}%)`,
+            isPositive: marketOverview.topLosers[0]?.changeAmount >= 0
+          }
+        ];
+        setMarketIndices(dynamicIndices);
+      } catch (marketError) {
+        console.error('Error fetching market indices:', marketError);
+        setMarketIndices([]);
+      }
       
-      setPortfolioData(combinedData);
     } catch (error) {
       console.error('Error fetching portfolio:', error);
-      Alert.alert('Error', 'Failed to load market data. Showing offline portfolio.');
-      
-      // Use static data service as fallback when API fails
-      const fallbackData = getStaticPortfolioData();
-      setPortfolioData(fallbackData);
+      Alert.alert('Error', 'Failed to load portfolio data.');
+      setPortfolioData([]);
     } finally {
       setLoading(false);
     }

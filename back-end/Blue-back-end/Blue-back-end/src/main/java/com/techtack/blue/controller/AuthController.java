@@ -2,13 +2,14 @@ package com.techtack.blue.controller;
 
 import com.techtack.blue.config.JwtProvider;
 import com.techtack.blue.exception.UserException;
-import com.techtack.blue.model.SecureToken;
 import com.techtack.blue.model.User;
+import com.techtack.blue.model.SecureToken;
 import com.techtack.blue.repository.UserRepository;
 import com.techtack.blue.response.AuthResponse;
 import com.techtack.blue.service.CustomUserDetailsServiceImplementation;
 import com.techtack.blue.service.EmailService;
 import com.techtack.blue.service.SecureTokenService;
+import com.techtack.blue.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/auth")
@@ -45,19 +47,22 @@ public class AuthController {
 
     @Autowired
     private EmailService emailService;
+    
+    @Autowired
+    private UserService userService;
 
     @PostMapping("/signup")
     public ResponseEntity<AuthResponse> registerUser(@Valid @RequestBody User user) throws UserException {
         
-        User isEmailExist = userRepository.findByEmail(user.getEmail());
+        Optional<User> isEmailExist = userRepository.findByEmail(user.getEmail());
         
-        if (isEmailExist != null) {
+        if (isEmailExist.isPresent()) {
             throw new UserException("Email is already registered");
         }
         
         User newUser = new User();
         newUser.setEmail(user.getEmail());
-        newUser.setFullName(user.getFullName());
+        newUser.setUsername(user.getUsername());
         newUser.setPassword(passwordEncoder.encode(user.getPassword()));
         newUser.setMobile(user.getMobile());
         newUser.setAccountBalance(0.0);
@@ -111,7 +116,8 @@ public class AuthController {
             
             String token = jwtProvider.generateToken(authentication);
             
-            User loggedInUser = userRepository.findByEmail(email);
+            User loggedInUser = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadCredentialsException("User not found with email: " + email));
             loggedInUser.setToken(token);
             userRepository.save(loggedInUser);
             
@@ -141,18 +147,15 @@ public class AuthController {
             throw new UserException("Email and new password are required");
         }
         
-        User user = userRepository.findByEmail(email);
-        
-        if (user == null) {
-            throw new UserException("User not found with email: " + email);
-        }
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new UserException("User not found with email: " + email));
         
         if (!user.isReq_user()) {
             throw new UserException("Please request password reset first");
         }
         
-        // Check if the new password is the same as the old one
-        if (passwordEncoder.matches(newPassword, user.getPassword())) {
+        // Check if the new password is the same as the old one using service layer
+        if (userService.isPasswordMatching(newPassword, user)) {
             throw new UserException("New password must be different from the current password");
         }
         
@@ -175,11 +178,8 @@ public class AuthController {
     public ResponseEntity<AuthResponse> forgotPassword(@Valid @RequestBody Map<String, String> request) throws UserException {
         String email = request.get("email");
 
-        User user = userRepository.findByEmail(email);
-
-        if (user == null) {
-            throw new UserException("User not found with email: " + email);
-        }
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new UserException("User not found with email: " + email));
         
         user.setReq_user(true);
         userRepository.save(user);
@@ -222,7 +222,10 @@ public class AuthController {
             throw new BadCredentialsException("Invalid username");
         }
         
-        if (!passwordEncoder.matches(password, userDetails.getPassword())) {
+        // Use UserService for password comparison
+        User user = userRepository.findByEmail(username)
+            .orElseThrow(() -> new BadCredentialsException("Invalid username"));
+        if (!userService.isPasswordMatching(password, user)) {
             throw new BadCredentialsException("Invalid password");
         }
         

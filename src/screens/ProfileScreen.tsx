@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useSettings } from '../context/SettingsContext';
-import { userService, userStockService, UserProfile, Portfolio } from '../services/api';
+import { enhancedUserService, realPortfolioService, UserDto } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function ProfileScreen({ navigation }) {
   const { settings } = useSettings();
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [userProfile, setUserProfile] = useState<UserDto | null>(null);
   const [portfolioStats, setPortfolioStats] = useState({
     portfolioValue: 0,
     stocksOwned: 0,
@@ -23,11 +23,11 @@ export default function ProfileScreen({ navigation }) {
       setLoading(true);
       
       // Fetch user profile
-      const profileResponse = await userService.getUserProfile();
+      const profileResponse = await enhancedUserService.getUserProfile();
       setUserProfile(profileResponse.data);
       
       // Fetch portfolio data
-      const portfolioResponse = await userStockService.getUserPortfolio();
+      const portfolioResponse = await realPortfolioService.getUserPortfolio();
       const portfolio = portfolioResponse.data?.data || portfolioResponse.data || [];
       
       // Calculate portfolio stats from the array of stocks
@@ -80,7 +80,7 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {userProfile?.fullName ? userProfile.fullName.split(' ').map(name => name[0]).join('').toUpperCase() : 'U'}
+                {userProfile?.fullName ? userProfile.fullName.split(' ').map((name: string) => name[0]).join('').toUpperCase() : 'U'}
               </Text>
             </View>
           </View>

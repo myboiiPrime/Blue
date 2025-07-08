@@ -14,7 +14,7 @@ public class User {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private Long id;
 
-    private String fullName;
+    private String username;
     private String location;
     private String email;
     private String password;
@@ -28,9 +28,9 @@ public class User {
     private String token;
     private double buyingPower = 0.0;
 
-    public User(Long id, String fullName, String location, String email, String password, String mobile, String identification_card, boolean req_user) {
+    public User(Long id, String username, String location, String email, String password, String mobile, String identification_card, boolean req_user) {
         this.id = id;
-        this.fullName = fullName;
+        this.username = username;
         this.location = location;
         this.email = email;
         this.password = password;
@@ -51,12 +51,12 @@ public class User {
         this.id = id;
     }
 
-    public String getFullName() {
-        return fullName;
+    public String getUsername() {
+        return username;
     }
 
-    public void setFullName(String fullName) {
-        this.fullName = fullName;
+    public void setUsername(String username) {
+        this.username = username;
     }
 
     public String getLocation() {

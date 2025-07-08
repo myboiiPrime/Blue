@@ -1,25 +1,26 @@
 package com.techtack.blue.service;
 
-import com.techtack.blue.dto.WatchlistDto;
-import com.techtack.blue.dto.WatchlistItemDto;
-import com.techtack.blue.model.Stock;
-import com.techtack.blue.model.User;
-import com.techtack.blue.model.Watchlist;
-import com.techtack.blue.model.WatchlistItem;
-import com.techtack.blue.repository.StockRepository;
-import com.techtack.blue.repository.UserRepository;
-import com.techtack.blue.exception.ResourceNotFoundException;
-import com.techtack.blue.exception.UserException;
-import com.techtack.blue.repository.WatchlistItemRepository;
-import com.techtack.blue.repository.WatchlistRepository;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import com.techtack.blue.dto.StockDto;
+import com.techtack.blue.dto.WatchlistDto;
+import com.techtack.blue.dto.WatchlistItemDto;
+import com.techtack.blue.exception.UserException;
+import com.techtack.blue.model.Stock;
+import com.techtack.blue.model.User;
+import com.techtack.blue.model.Watchlist;
+import com.techtack.blue.model.WatchlistSymbol;
+import com.techtack.blue.repository.StockRepository;
+import com.techtack.blue.repository.UserRepository;
+import com.techtack.blue.repository.WatchlistSymbolRepository;
+import com.techtack.blue.repository.WatchlistRepository;
 
 @Service
 public class WatchlistService {
@@ -28,13 +29,13 @@ public class WatchlistService {
     private WatchlistRepository watchlistRepository;
 
     @Autowired
-    private WatchlistItemRepository watchlistItemRepository;
-
-    @Autowired
     private UserRepository userRepository;
 
     @Autowired
     private StockRepository stockRepository;
+    
+    @Autowired
+    private WatchlistSymbolRepository watchlistSymbolRepository;
 
     // Create a new watchlist for a user
     @Transactional
@@ -55,80 +56,6 @@ public class WatchlistService {
         watchlist.setUser(user);
         watchlist = watchlistRepository.save(watchlist);
         return convertToDto(watchlist);
-    }
-
-    // Get all watchlists for a user
-    public List<WatchlistDto> getUserWatchlists(Long userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
-        
-        return watchlistRepository.findByUser(user).stream()
-                .map(this::convertToDto)
-                .collect(Collectors.toList());
-    }
-
-    // Get a specific watchlist by ID
-    public WatchlistDto getWatchlistById(Long id, Long userId) {
-        Watchlist watchlist = watchlistRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Watchlist not found with id: " + id
-                ));
-        
-        if (!watchlist.getUser().getId().equals(userId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You don't have permission to access this watchlist"
-            );
-        }
-        
-        return convertToDto(watchlist);
-    }
-
-    // Update a watchlist
-    @Transactional
-    public WatchlistDto updateWatchlist(Long id, WatchlistDto watchlistDto, Long userId) throws UserException {
-        Watchlist watchlist = watchlistRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Watchlist not found with id: " + id
-                ));
-        
-        if (!watchlist.getUser().getId().equals(userId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You don't have permission to update this watchlist"
-            );
-        }
-        
-        // Check if another watchlist with the same name already exists for this user
-        if (!watchlist.getName().equals(watchlistDto.getName()) && 
-                watchlistRepository.existsByNameAndUser(watchlistDto.getName(), watchlist.getUser())) {
-            throw new UserException("Watchlist with name '" + watchlistDto.getName() + "' already exists");
-        }
-        
-        watchlist.setName(watchlistDto.getName());
-        watchlist = watchlistRepository.save(watchlist);
-        return convertToDto(watchlist);
-    }
-
-    // Delete a watchlist
-    @Transactional
-    public void deleteWatchlist(Long id, Long userId) {
-        Watchlist watchlist = watchlistRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Watchlist not found with id: " + id
-                ));
-        
-        if (!watchlist.getUser().getId().equals(userId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "You don't have permission to delete this watchlist"
-            );
-        }
-        
-        watchlistRepository.delete(watchlist);
     }
 
     // Add a stock to a watchlist
@@ -154,24 +81,29 @@ public class WatchlistService {
                 ));
         
         // Check if the stock is already in the watchlist
-        if (watchlistItemRepository.existsByWatchlistAndStock(watchlist, stock)) {
+        if (watchlistSymbolRepository.existsByWatchlistAndStock(watchlist, stock)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Stock already exists in the watchlist"
             );
         }
         
-        WatchlistItem item = new WatchlistItem();
-        item.setWatchlist(watchlist);
-        item.setStock(stock);
-        item = watchlistItemRepository.save(item);
+        // Add to symbols list for backward compatibility
+        watchlist.addSymbol(stock.getSymbol());
+        watchlistRepository.save(watchlist);
         
-        return convertToItemDto(item);
+        // Create and save the watchlist item
+        WatchlistSymbol watchlistSymbol = new WatchlistSymbol();
+        watchlistSymbol.setWatchlist(watchlist);
+        watchlistSymbol.setStock(stock);
+        watchlistSymbol = watchlistSymbolRepository.save(watchlistSymbol);
+        
+        return convertToItemDto(watchlistSymbol);
     }
 
     // Remove a stock from a watchlist
     @Transactional
-    public void removeStockFromWatchlist(Long watchlistId, Long itemId, Long userId) {
+    public void removeStockFromWatchlist(Long watchlistId, Long stockItemId, Long userId) {
         Watchlist watchlist = watchlistRepository.findById(watchlistId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
@@ -185,23 +117,47 @@ public class WatchlistService {
             );
         }
         
-        WatchlistItem item = watchlistItemRepository.findById(itemId)
+        WatchlistSymbol watchlistSymbol = watchlistSymbolRepository.findById(stockItemId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Watchlist item not found with id: " + itemId
+                        "Stock item not found in watchlist with id: " + stockItemId
                 ));
         
-        if (!item.getWatchlist().getId().equals(watchlistId)) {
+        // Verify the item belongs to the specified watchlist
+        if (!watchlistSymbol.getWatchlist().getId().equals(watchlistId)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Item does not belong to the specified watchlist"
+                    "Stock item does not belong to the specified watchlist"
             );
         }
         
-        watchlistItemRepository.delete(item);
+        // Remove from symbols list for backward compatibility
+        watchlist.removeSymbol(watchlistSymbol.getStock().getSymbol());
+        watchlistRepository.save(watchlist);
+        
+        // Delete the watchlist item
+        watchlistSymbolRepository.delete(watchlistSymbol);
     }
 
-    // Get all items in a watchlist
+    // Get all stocks in a watchlist
+    public List<String> getWatchlistSymbols(Long watchlistId, Long userId) {
+        Watchlist watchlist = watchlistRepository.findById(watchlistId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Watchlist not found with id: " + watchlistId
+                ));
+        
+        if (!watchlist.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You don't have permission to view this watchlist"
+            );
+        }
+        
+        return watchlist.getSymbols();
+    }
+    
+    // Get all watchlist items for a watchlist
     public List<WatchlistItemDto> getWatchlistItems(Long watchlistId, Long userId) {
         Watchlist watchlist = watchlistRepository.findById(watchlistId)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -216,9 +172,89 @@ public class WatchlistService {
             );
         }
         
-        return watchlistItemRepository.findByWatchlist(watchlist).stream()
+        List<WatchlistSymbol> watchlistSymbols = watchlistSymbolRepository.findByWatchlist(watchlist);
+        return watchlistSymbols.stream()
                 .map(this::convertToItemDto)
                 .collect(Collectors.toList());
+    }
+    
+    // Get all watchlists for a user
+    public List<WatchlistDto> getUserWatchlists(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "User not found with id: " + userId
+                ));
+        
+        List<Watchlist> watchlists = watchlistRepository.findByUser(user);
+        return watchlists.stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+    
+    // Get a specific watchlist by ID
+    public WatchlistDto getWatchlistById(Long watchlistId, Long userId) {
+        Watchlist watchlist = watchlistRepository.findById(watchlistId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Watchlist not found with id: " + watchlistId
+                ));
+        
+        if (!watchlist.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You don't have permission to view this watchlist"
+            );
+        }
+        
+        return convertToDto(watchlist);
+    }
+    
+    // Update a watchlist
+    @Transactional
+    public WatchlistDto updateWatchlist(Long watchlistId, WatchlistDto watchlistDto, Long userId) throws UserException {
+        Watchlist watchlist = watchlistRepository.findById(watchlistId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Watchlist not found with id: " + watchlistId
+                ));
+        
+        if (!watchlist.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You don't have permission to update this watchlist"
+            );
+        }
+        
+        // Check if the new name conflicts with another watchlist owned by this user
+        if (!watchlist.getName().equals(watchlistDto.getName()) && 
+                watchlistRepository.existsByNameAndUser(watchlistDto.getName(), watchlist.getUser())) {
+            throw new UserException("Watchlist with name '" + watchlistDto.getName() + "' already exists");
+        }
+        
+        watchlist.setName(watchlistDto.getName());
+        watchlist = watchlistRepository.save(watchlist);
+        
+        return convertToDto(watchlist);
+    }
+    
+    // Delete a watchlist
+    @Transactional
+    public void deleteWatchlist(Long watchlistId, Long userId) {
+        Watchlist watchlist = watchlistRepository.findById(watchlistId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Watchlist not found with id: " + watchlistId
+                ));
+        
+        if (!watchlist.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You don't have permission to delete this watchlist"
+            );
+        }
+        
+        watchlistRepository.delete(watchlist);
     }
 
     // Helper method to convert Watchlist to WatchlistDto
@@ -228,31 +264,35 @@ public class WatchlistService {
         dto.setName(watchlist.getName());
         dto.setUserId(watchlist.getUser().getId());
         dto.setCreatedAt(watchlist.getCreatedAt());
-        
-        // Convert items if needed
-        if (watchlist.getItems() != null) {
-            List<WatchlistItemDto> itemDtos = watchlist.getItems().stream()
-                    .map(this::convertToItemDto)
-                    .collect(Collectors.toList());
-            dto.setItems(itemDtos);
-        }
-        
+        dto.setSymbols(watchlist.getSymbols());
         return dto;
     }
-
+    
     // Helper method to convert WatchlistItem to WatchlistItemDto
-    private WatchlistItemDto convertToItemDto(WatchlistItem item) {
+    private WatchlistItemDto convertToItemDto(WatchlistSymbol watchlistSymbol) {
         WatchlistItemDto dto = new WatchlistItemDto();
-        dto.setId(item.getId());
-        dto.setWatchlistId(item.getWatchlist().getId());
-        dto.setAddedAt(item.getAddedAt());
-        
-        // Convert Stock to StockDto if needed
-        if (item.getStock() != null) {
-            // Assuming you have a method to convert Stock to StockDto
-            // dto.setStock(convertToStockDto(item.getStock()));
-        }
-        
+        dto.setId(watchlistSymbol.getId());
+        dto.setWatchlistId(watchlistSymbol.getWatchlist().getId());
+        dto.setStock(convertToStockDto(watchlistSymbol.getStock()));
+        dto.setAddedAt(watchlistSymbol.getAddedAt());
+        return dto;
+    }
+    
+    // Helper method to convert Stock to StockDto
+    private StockDto convertToStockDto(Stock stock) {
+        StockDto dto = new StockDto();
+        dto.setId(stock.getId());
+        dto.setSymbol(stock.getSymbol());
+        dto.setName(stock.getName());
+        dto.setPrice(stock.getPrice());
+        dto.setOpen(stock.getOpen());
+        dto.setHigh(stock.getHigh());
+        dto.setLow(stock.getLow());
+        dto.setPreviousClose(stock.getPreviousClose());
+        dto.setVolume(stock.getVolume());
+        dto.setLastUpdated(stock.getLastUpdated());
+        dto.setChangeAmount(stock.getChange());
+        dto.setChangePercent(stock.getChangePercent());
         return dto;
     }
 }

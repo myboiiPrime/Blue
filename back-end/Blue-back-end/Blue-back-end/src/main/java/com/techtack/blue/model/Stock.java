@@ -23,8 +23,8 @@ public class Stock {
     private double previousClose;
     private long volume;
     private LocalDateTime lastUpdated;
-    private boolean isMarketIndex = false;
-    private String code;
+    private String industry;
+    private double marketCap;
     private double change;
     private double changePercent;
 
@@ -109,5 +109,37 @@ public class Stock {
 
     public void setLastUpdated(LocalDateTime lastUpdated) {
         this.lastUpdated = lastUpdated;
+    }
+
+    public String getIndustry() {
+        return industry;
+    }
+
+    public void setIndustry(String industry) {
+        this.industry = industry;
+    }
+
+    public double getMarketCap() {
+        return marketCap;
+    }
+
+    public void setMarketCap(double marketCap) {
+        this.marketCap = marketCap;
+    }
+
+    public double getChange() {
+        return change;
+    }
+
+    public void setChange(double change) {
+        this.change = change;
+    }
+
+    public double getChangePercent() {
+        return changePercent;
+    }
+
+    public void setChangePercent(double changePercent) {
+        this.changePercent = changePercent;
     }
 }

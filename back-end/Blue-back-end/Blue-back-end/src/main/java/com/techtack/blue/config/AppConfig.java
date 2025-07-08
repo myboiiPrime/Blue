@@ -22,21 +22,34 @@ import java.util.Collections;
 public class AppConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
-            .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/h2-console/**").permitAll()
-                .requestMatchers("/auth/**").permitAll()
-                .requestMatchers("/api/**").authenticated()
-                .anyRequest().permitAll()
-            )
-            .addFilterBefore(new JwtTokenValidator(), BasicAuthenticationFilter.class)
-            .csrf().disable()
-            .headers().frameOptions().disable().and() // This is needed for H2 console to work
-            .cors().configurationSource(corsConfigurationSource()).and()
-            .httpBasic().and().formLogin();
-        return http.build();
-    }
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
+        .authorizeHttpRequests(authorize -> authorize
+            // Public endpoints
+            // .requestMatchers("/h2-console/**").permitAll()
+            .requestMatchers("/auth/**").permitAll()
+            .requestMatchers("/dashboard/**").permitAll()
+            .requestMatchers("/stocks/**").permitAll()
+            .requestMatchers("/market/**").permitAll()
+            
+            // Protected endpoints requiring authentication
+            .requestMatchers("/trading/**").authenticated()
+            .requestMatchers("/user-stocks/**").authenticated()
+            .requestMatchers("/watchlists/**").authenticated()
+            .requestMatchers("/users/**").authenticated()
+            
+            // // Legacy API endpoints
+            // .requestMatchers("/api/**").authenticated()
+            
+            .anyRequest().permitAll()
+        )
+        .addFilterBefore(new JwtTokenValidator(), BasicAuthenticationFilter.class)
+        .csrf().disable()
+        .headers().frameOptions().disable().and()
+        .cors().configurationSource(corsConfigurationSource()).and()
+        .httpBasic().and().formLogin();
+    return http.build();
+}
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

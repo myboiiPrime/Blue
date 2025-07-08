@@ -12,7 +12,12 @@ import {
   Modal,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import api from '../services/api';
+import api, { 
+  enhancedSearchService, 
+  tradingService, 
+  StockSearchDto,
+  OrderDto,
+} from '../services/api';
 import { STATIC_STOCKS, StaticStock } from '../services/staticData';
 import StockSearchScreen from './StockSearchScreen';
 
@@ -44,26 +49,20 @@ interface OrderBookEntry {
   price: number;
 }
 
-// Or alternatively, you can transform the data in the search function:
-// Remove this entire function definition (lines ~40-62):
-// const searchStocks = (query: string) => {
-//   if (!query.trim()) {
-//     setSearchResults([]);
-//     return;
-//   }
-//   ...
-// };
 
-// Keep only the searchStocks function that's inside the component (around line 95)
 export default function TradingScreen() {
   const [activeMainTab, setActiveMainTab] = useState('Equity');
   const [activeSubTab, setActiveSubTab] = useState('Order');
   const [searchSymbol, setSearchSymbol] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchResults, setSearchResults] = useState<StockSearchDto[]>([]);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [orderType, setOrderType] = useState('Normal Order');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
+  const [stopPrice, setStopPrice] = useState('');
+  const [limitPrice, setLimitPrice] = useState('');
+  const [trailAmount, setTrailAmount] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
   const [autoPriceEnabled, setAutoPriceEnabled] = useState(false);
   const [buyingPower] = useState(10000);
   const [maxQuantity, setMaxQuantity] = useState(0);
@@ -71,49 +70,82 @@ export default function TradingScreen() {
   const [isLoadingStock, setIsLoadingStock] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [availableOrderTypes, setAvailableOrderTypes] = useState<string[]>([]);
+  const [openOrders, setOpenOrders] = useState<OrderDto[]>([]);
 
-  // Mock order book data (you can replace this with real data later)
-  const orderBookData: OrderBookEntry[] = [
-    { volume: 100, price: selectedStock?.price ? selectedStock.price * 0.99 : 0 },
-    { volume: 200, price: selectedStock?.price ? selectedStock.price * 0.98 : 0 },
-    { volume: 100, price: selectedStock?.price ? selectedStock.price * 0.97 : 0 },
-  ];
+  // Load available order types from backend
+  useEffect(() => {
+    loadOrderTypes();
+    loadOpenOrders();
+  }, []);
 
-  const orderTypes = [
-    'Normal Order',
-    'Stop Order',
-    'Stop Limit',
-    'Trailing Stop',
-    'OCO',
-    'GTD',
-  ];
+  const loadOrderTypes = async () => {
+    try {
+      const response = await tradingService.getOrderTypes();
+      setAvailableOrderTypes(response.data);
+    } catch (error) {
+      console.error('Error loading order types:', error);
+      // Fallback to static order types
+      setAvailableOrderTypes([
+        'Normal Order',
+        'Stop Order', 
+        'Stop Limit',
+        'Trailing Stop',
+        'OCO',
+        'GTD'
+      ]);
+    }
+  };
 
-  // Search for stocks using the backend API
-  const searchStocks = (query: string) => {
+  const loadOpenOrders = async () => {
+    try {
+      const response = await tradingService.getOpenOrders();
+      setOpenOrders(response.data);
+    } catch (error) {
+      console.error('Error loading open orders:', error);
+    }
+  };
+
+  // Enhanced search using backend API
+  const searchStocks = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
+      setShowSearchResults(false);
       return;
     }
 
     setIsSearching(true);
+    setShowSearchResults(true);
     
-    // Filter static data instead of API call
-    setTimeout(() => {
+    try {
+      const response = await enhancedSearchService.searchStocks(query);
+      setSearchResults(response.data.slice(0, 10));
+    } catch (error) {
+      console.error('Error searching stocks:', error);
+      // Fallback to static data
       const filteredStocks = STATIC_STOCKS.filter(stock => 
         stock.symbol.toLowerCase().includes(query.toLowerCase()) ||
         stock.name.toLowerCase().includes(query.toLowerCase())
-      );
-      
+      ).map(stock => ({
+        symbol: stock.symbol,
+        name: stock.name,
+        price: stock.price,
+        change: 0,
+        changePercent: 0,
+        industry: 'Technology',
+        marketCap: 1000000000
+      }));
       setSearchResults(filteredStocks.slice(0, 10));
+    } finally {
       setIsSearching(false);
-    }, 300);
+    }
   };
 
-  // Get detailed stock information
+  // Get detailed stock information using enhanced service
   const getStockDetails = async (symbol: string) => {
     setIsLoadingStock(true);
     try {
-      const response = await api.get(`/stocks/${symbol}`);
+      const response = await enhancedSearchService.getStockDetails(symbol);
       const stockData: StockData = response.data;
       setSelectedStock(stockData);
       setPrice(stockData.price.toString());
@@ -123,6 +155,115 @@ export default function TradingScreen() {
       Alert.alert('Error', 'Failed to fetch stock details. Please try again.');
     } finally {
       setIsLoadingStock(false);
+    }
+  };
+
+  // Enhanced order placement with different order types
+  const handlePlaceOrder = async (side: 'BUY' | 'SELL') => {
+    if (!selectedStock || !quantity || !price) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    const orderData = {
+      symbol: selectedStock.symbol,
+      quantity: parseInt(quantity),
+      price: parseFloat(price),
+      side
+    };
+
+    try {
+      let response;
+      
+      switch (orderType) {
+        case 'Normal Order':
+          response = await tradingService.placeNormalOrder(orderData);
+          break;
+        case 'Stop Order':
+          if (!stopPrice) {
+            Alert.alert('Error', 'Stop price is required for stop orders');
+            return;
+          }
+          response = await tradingService.placeStopOrder({
+            ...orderData,
+            stopPrice: parseFloat(stopPrice)
+          });
+          break;
+        case 'Stop Limit':
+          if (!stopPrice || !limitPrice) {
+            Alert.alert('Error', 'Stop price and limit price are required');
+            return;
+          }
+          response = await tradingService.placeStopLimitOrder({
+            ...orderData,
+            stopPrice: parseFloat(stopPrice),
+            limitPrice: parseFloat(limitPrice)
+          });
+          break;
+        case 'Trailing Stop':
+          if (!trailAmount) {
+            Alert.alert('Error', 'Trail amount is required for trailing stop orders');
+            return;
+          }
+          response = await tradingService.placeTrailingStopOrder({
+            ...orderData,
+            trailAmount: parseFloat(trailAmount)
+          });
+          break;
+        case 'OCO':
+          if (!stopPrice || !limitPrice) {
+            Alert.alert('Error', 'Stop price and limit price are required for OCO orders');
+            return;
+          }
+          response = await tradingService.placeOCOOrder({
+            ...orderData,
+            stopPrice: parseFloat(stopPrice),
+            limitPrice: parseFloat(limitPrice)
+          });
+          break;
+        case 'GTD':
+          if (!expiryDate) {
+            Alert.alert('Error', 'Expiry date is required for GTD orders');
+            return;
+          }
+          response = await tradingService.placeGTDOrder({
+            ...orderData,
+            expiryDate
+          });
+          break;
+        default:
+          response = await tradingService.placeNormalOrder(orderData);
+      }
+
+      Alert.alert('Success', `${side} order placed successfully!`);
+      loadOpenOrders(); // Refresh open orders
+      
+      // Clear form
+      setQuantity('');
+      setPrice('');
+      setStopPrice('');
+      setLimitPrice('');
+      setTrailAmount('');
+      setExpiryDate('');
+      
+    } catch (error) {
+      console.error('Error placing order:', error);
+      Alert.alert('Error', 'Failed to place order. Please try again.');
+    }
+  };
+
+  const handleBuy = () => handlePlaceOrder('BUY');
+  const handleSell = () => handlePlaceOrder('SELL');
+
+  // Cancel order function
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      await tradingService.cancelOrder(orderId);
+      Alert.alert('Success', 'Order cancelled successfully!');
+      loadOpenOrders(); // Refresh open orders
+    } catch (error) {
+      console.error('Error cancelling order:', error);
+      Alert.alert('Error', 'Failed to cancel order.');
     }
   };
 
@@ -157,66 +298,183 @@ export default function TradingScreen() {
       setPrice(selectedStock.price.toString());
     }
   }, [autoPriceEnabled, selectedStock]);
-
-  const handleBuy = () => {
-    if (!selectedStock || !quantity || !price) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-    Alert.alert('Success', `Buy order placed for ${quantity} shares of ${selectedStock.symbol} at $${price}`);
+  const handleSearchPress = () => {
+    setShowSearchModal(true);
+  };
+  
+  const handleStockSelectFromSearch = (stock: StaticStock) => {
+    setSearchSymbol(stock.symbol);
+    // Convert StaticStock to StockData format
+    const stockData: StockData = {
+      id: parseInt(stock.id),
+      symbol: stock.symbol,
+      name: stock.name,
+      price: stock.price,
+      changeAmount: 0, // You can calculate this based on your needs
+      changePercent: 0,
+      high: stock.price * 1.05,
+      low: stock.price * 0.95,
+      volume: 1000000,
+      open: stock.price,
+      previousClose: stock.price,
+    };
+    setSelectedStock(stockData);
+    setPrice(stock.price.toString());
+    setShowSearchModal(false);
   };
 
-  const handleSell = () => {
-    if (!selectedStock || !quantity || !price) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
+
+  // Render additional order fields based on order type
+  const renderOrderTypeFields = () => {
+    switch (orderType) {
+      case 'Stop Order':
+        return (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Stop Price</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter stop price"
+              value={stopPrice}
+              onChangeText={setStopPrice}
+              keyboardType="numeric"
+            />
+          </View>
+        );
+      case 'Stop Limit':
+      case 'OCO':
+        return (
+          <>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Stop Price</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter stop price"
+                value={stopPrice}
+                onChangeText={setStopPrice}
+                keyboardType="numeric"
+              />
+            </View>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Limit Price</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter limit price"
+                value={limitPrice}
+                onChangeText={setLimitPrice}
+                keyboardType="numeric"
+              />
+            </View>
+          </>
+        );
+      case 'Trailing Stop':
+        return (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Trail Amount</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter trail amount"
+              value={trailAmount}
+              onChangeText={setTrailAmount}
+              keyboardType="numeric"
+            />
+          </View>
+        );
+      case 'GTD':
+        return (
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Expiry Date</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              value={expiryDate}
+              onChangeText={setExpiryDate}
+            />
+          </View>
+        );
+      default:
+        return null;
     }
-    Alert.alert('Success', `Sell order placed for ${quantity} shares of ${selectedStock.symbol} at $${price}`);
   };
-      // Add these functions after the handleSell function (around line 170):
-      
-      const handleSearchPress = () => {
-        setShowSearchModal(true);
-      };
-      
-      const handleStockSelectFromSearch = (stock: StaticStock) => {
-        setSearchSymbol(stock.symbol);
-        // Convert StaticStock to StockData format
-        const stockData: StockData = {
-          id: parseInt(stock.id),
-          symbol: stock.symbol,
-          name: stock.name,
-          price: stock.price,
-          changeAmount: 0, // You can calculate this based on your needs
-          changePercent: 0,
-          high: stock.price * 1.05,
-          low: stock.price * 0.95,
-          volume: 1000000,
-          open: stock.price,
-          previousClose: stock.price,
-        };
-        setSelectedStock(stockData);
-        setPrice(stock.price.toString());
-        setShowSearchModal(false);
-      };
+
+  // Render open orders section
+  const renderOpenOrders = () => {
+    if (activeSubTab !== 'Orders') return null;
+
+    return (
+      <View style={styles.ordersSection}>
+        <Text style={styles.sectionTitle}>Open Orders</Text>
+        {openOrders.length === 0 ? (
+          <Text style={styles.noOrdersText}>No open orders</Text>
+        ) : (
+          openOrders.map((order) => (
+            <View key={order.id} style={styles.orderItem}>
+              <View style={styles.orderInfo}>
+                <Text style={styles.orderSymbol}>{order.symbol}</Text>
+                <Text style={styles.orderDetails}>
+                  {order.side} {order.quantity} @ ${order.price.toFixed(2)}
+                </Text>
+                <Text style={styles.orderType}>{order.orderType}</Text>
+                <Text style={styles.orderStatus}>{order.status}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => handleCancelOrder(order.id)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </View>
+    );
+  };
+
+  // Mock order book data (you can replace this with real data later)
+  const orderBookData: OrderBookEntry[] = [
+    { volume: 100, price: selectedStock?.price ? selectedStock.price * 0.99 : 0 },
+    { volume: 200, price: selectedStock?.price ? selectedStock.price * 0.98 : 0 },
+    { volume: 100, price: selectedStock?.price ? selectedStock.price * 0.97 : 0 },
+  ];
+
+  const orderTypes = [
+    'Normal Order',
+    'Stop Order',
+    'Stop Limit',
+    'Trailing Stop',
+    'OCO',
+    'GTD',
+  ];
+
   const renderSearchResults = () => {
     if (!showSearchResults || searchResults.length === 0) return null;
 
     return (
       <View style={styles.searchResults}>
-        {searchResults.map((stock) => (
+        {searchResults.map((stock, index) => (
           <TouchableOpacity
-            key={stock.id}
+            key={`${stock.symbol}-${index}`}
             style={styles.searchResultItem}
-            onPress={() => handleStockSelect(stock)}
+            onPress={() => {
+              setSearchSymbol(stock.symbol);
+              getStockDetails(stock.symbol);
+            }}
           >
             <View style={styles.searchResultInfo}>
               <Text style={styles.searchResultSymbol}>{stock.symbol}</Text>
               <Text style={styles.searchResultName}>{stock.name}</Text>
+              {stock.industry && (
+                <Text style={styles.searchResultIndustry}>{stock.industry}</Text>
+              )}
             </View>
-            {stock.price > 0 && (
+            <View style={styles.searchResultPriceInfo}>
               <Text style={styles.searchResultPrice}>${stock.price.toFixed(2)}</Text>
-            )}
+              <Text style={[
+                styles.searchResultChange,
+                stock.change >= 0 ? styles.positiveChange : styles.negativeChange
+              ]}>
+                {stock.change >= 0 ? '+' : ''}{stock.changePercent.toFixed(2)}%
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
       </View>
@@ -905,6 +1163,19 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 2,
   },
+  searchResultIndustry: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  searchResultPriceInfo: {
+    alignItems: 'flex-end',
+  },
+  searchResultChange: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
 
   // Add these missing styles:
   loadingContainer: {
@@ -917,5 +1188,94 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B7280',
     marginTop: 12,
+  },
+  // Add these missing styles:
+  label: {
+    fontSize: 16,
+    color: '#1F2937',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  input: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  ordersSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  noOrdersText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingVertical: 20,
+    fontStyle: 'italic',
+  },
+  orderItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  orderInfo: {
+    flex: 1,
+  },
+  orderSymbol: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  orderDetails: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  orderType: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  orderStatus: {
+    fontSize: 12,
+    color: '#059669',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  cancelButtonText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '500',
   },
 });

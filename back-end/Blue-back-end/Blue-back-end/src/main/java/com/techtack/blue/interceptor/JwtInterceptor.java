@@ -12,6 +12,8 @@ import org.springframework.lang.Nullable;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.ModelAndView;
 
+import java.util.Optional;
+
 
 @Component
 public class JwtInterceptor implements HandlerInterceptor {
@@ -30,7 +32,7 @@ public class JwtInterceptor implements HandlerInterceptor {
             try {
                 String email = jwtProvider.getEmailFromToken(jwt);
                 
-                User user = userRepository.findByEmail(email);
+                Optional<User> user = userRepository.findByEmail(email);
                 
                 if (user != null) {
                     request.setAttribute("currentUser", user);

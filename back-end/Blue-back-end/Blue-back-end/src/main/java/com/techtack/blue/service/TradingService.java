@@ -37,9 +37,11 @@ public class TradingService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         
-        // Validate stock exists
-        Stock stock = stockRepository.findById(order.getStock().getId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found"));
+        // Validate stock exists - find by symbol from the order
+        Stock stock = stockRepository.findBySymbol(order.getSymbol());
+        if (stock == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found with symbol: " + order.getSymbol());
+        }
         
         // Set relationships
         order.setUser(user);
@@ -299,6 +301,14 @@ public class TradingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Expiry date is required for GTD orders");
         }
         
+        return placeOrder(order, userId);
+    }
+
+    @Transactional
+    public Order placeNormalOrder(Order order, Long userId) {
+        order.setOrderType(OrderType.NORMAL);
+        
+        // Normal orders don't require additional validation beyond basic order fields
         return placeOrder(order, userId);
     }
 }

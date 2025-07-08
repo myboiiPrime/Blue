@@ -8,6 +8,7 @@ import {
   Dimensions,
   RefreshControl,
 } from 'react-native';
+import { marketAnalyticsService, MarketDataDto } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -47,6 +48,8 @@ export default function MarketScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [stocksSubTab, setStocksSubTab] = useState('Movers');
   const [timeFilter, setTimeFilter] = useState('Today');
+  const [marketData, setMarketData] = useState<MarketDataDto | null>(null);
+  const [isLoadingMarketData, setIsLoadingMarketData] = useState(false);
   const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([
     {
       name: 'VNINDEX',
@@ -133,6 +136,22 @@ export default function MarketScreen() {
   ]);
 
   const tabs = ['Snapshot', 'Stocks', 'Industries', 'Indices'];
+
+  const loadMarketData = async () => {
+    setIsLoadingMarketData(true);
+    try {
+      const response = await marketAnalyticsService.getMarketData();
+      setMarketData(response.data);
+    } catch (error) {
+      console.error('Error loading market data:', error);
+    } finally {
+      setIsLoadingMarketData(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMarketData();
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);

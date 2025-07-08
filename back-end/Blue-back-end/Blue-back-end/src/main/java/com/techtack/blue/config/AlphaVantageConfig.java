@@ -5,7 +5,7 @@ public class AlphaVantageConfig {
     private String baseUrl;
 
     public AlphaVantageConfig() {
-        this.apiKey = "YOUR_API_KEY";
+        this.apiKey = "API_KEY";
         this.baseUrl = "https://www.alphavantage.co/query";
     }
 

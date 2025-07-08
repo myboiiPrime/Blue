@@ -1,15 +1,22 @@
 package com.techtack.blue.model;
 
-import jakarta.persistence.*;
-import lombok.Data;
-
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
 @Entity
 @Table(name = "watchlists")
-@Data
 public class Watchlist {
 
     @Id
@@ -22,8 +29,10 @@ public class Watchlist {
     @ManyToOne
     private User user;
 
-    @OneToMany(mappedBy = "watchlist", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<WatchlistItem> items = new ArrayList<>();
+    @ElementCollection
+    @CollectionTable(name = "watchlist_symbols", joinColumns = @JoinColumn(name = "watchlist_id"))
+    @Column(name = "symbol")
+    private List<String> symbols = new ArrayList<>();
 
     public Watchlist() {
         this.createdAt = LocalDateTime.now();
@@ -61,21 +70,21 @@ public class Watchlist {
         this.user = user;
     }
 
-    public List<WatchlistItem> getItems() {
-        return items;
+    public List<String> getSymbols() {
+        return symbols;
     }
 
-    public void setItems(List<WatchlistItem> items) {
-        this.items = items;
+    public void setSymbols(List<String> symbols) {
+        this.symbols = symbols;
     }
 
-    public void addItem(WatchlistItem item) {
-        items.add(item);
-        item.setWatchlist(this);
+    public void addSymbol(String symbol) {
+        if (!symbols.contains(symbol)) {
+            symbols.add(symbol);
+        }
     }
 
-    public void removeItem(WatchlistItem item) {
-        items.remove(item);
-        item.setWatchlist(null);
+    public void removeSymbol(String symbol) {
+        symbols.remove(symbol);
     }
-}
+}                                           

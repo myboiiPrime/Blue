@@ -4,16 +4,39 @@ import { useNavigation } from '@react-navigation/native';
 import MiniCandlestickChart from "../components/MiniCandlestickChart";
 import { useTheme } from "../utils/theme";
 import { stockService, CandlestickData } from '../services/api';
-import { getStaticMarketData } from '../services/staticData';
 
+// Define StockDto interface
+interface StockDto {
+  id: number;
+  symbol: string;
+  name: string;
+  price: number;
+  open: number;
+  high: number;
+  low: number;
+  previousClose: number;
+  volume: number;
+  lastUpdated: string;
+  changeAmount: number;
+  changePercent: number;
+}
+
+// Define MarketOverview interface
+interface MarketOverview {
+  topTraded: StockDto[];
+  topGainers: StockDto[];
+  topLosers: StockDto[];
+}
+
+// Update the MarketData interface to match StockDto
 interface MarketData {
   symbol: string;
   name: string;
   price: number;
-  change: number;
+  changeAmount: number;
   changePercent: number;
   volume: number;
-  chartData: CandlestickData[]; // Changed from number[] to CandlestickData[]
+  chartData: CandlestickData[];
 }
 
 interface IndexData {
@@ -22,8 +45,22 @@ interface IndexData {
   change: number;
   changePercent: number;
   volume: string;
-  chartData: CandlestickData[]; // Changed from number[] to CandlestickData[]
+  chartData: CandlestickData[];
 }
+
+// Mock marketAnalyticsService for now
+const marketAnalyticsService = {
+  getMarketOverview: async (): Promise<MarketOverview> => {
+    // This should be replaced with actual backend call
+    const response = await fetch('/api/market-overview');
+    return response.json();
+  },
+  getDashboardData: async () => {
+    // This should be replaced with actual backend call
+    const response = await fetch('/api/dashboard-data');
+    return response.json();
+  }
+};
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -41,78 +78,69 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       
-      const marketOverview = await stockService.getMarketOverview();
-      console.log('API Response:', marketOverview); // Add this
+      // Use backend market overview API
+      const marketOverview = await marketAnalyticsService.getMarketOverview();
+      console.log('Backend API Response:', marketOverview);
       
       const processedMarketData: MarketData[] = [];
       
-      for (const stockData of marketOverview) {
-        const quote = stockData['Global Quote'];
-        if (quote) {
-          const symbol = quote['01. symbol'];
-          const price = parseFloat(quote['05. price']);
-          const change = parseFloat(quote['09. change']);
-          const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
-          const volume = parseInt(quote['06. volume']);
+      // Process topTraded stocks
+      for (const stockDto of marketOverview.topTraded) {
+        try {
+          const historicalData = await stockService.getHistoricalData(stockDto.symbol, '1day');
+          const chartData = historicalData.slice(-20);
           
-          // Fetch historical data for chart
-          try {
-            const historicalData = await stockService.getHistoricalData(symbol, '1day');
-            const chartData = historicalData.slice(-20); // Keep full CandlestickData objects
-            
-            processedMarketData.push({
-              symbol,
-              name: symbol,
-              price,
-              change,
-              changePercent,
-              volume,
-              chartData
-            });
-          } catch (error) {
-            console.error(`Error fetching chart data for ${symbol}:`, error);
-            processedMarketData.push({
-              symbol,
-              name: symbol,
-              price,
-              change,
-              changePercent,
-              volume,
-              chartData: []
-            });
-          }
+          processedMarketData.push({
+            symbol: stockDto.symbol,
+            name: stockDto.name || stockDto.symbol,
+            price: stockDto.price,
+            changeAmount: stockDto.changeAmount,
+            changePercent: stockDto.changePercent,
+            volume: stockDto.volume,
+            chartData
+          });
+        } catch (error) {
+          console.error(`Error fetching chart data for ${stockDto.symbol}:`, error);
+          processedMarketData.push({
+            symbol: stockDto.symbol,
+            name: stockDto.name || stockDto.symbol,
+            price: stockDto.price,
+            changeAmount: stockDto.changeAmount,
+            changePercent: stockDto.changePercent,
+            volume: stockDto.volume,
+            chartData: []
+          });
         }
       }
       
       setMarketData(processedMarketData);
       
-      // Create index data from major stocks
-      // Instead of static fallbacks, use dynamic defaults or skip creation
-      if (processedMarketData.length >= 3) {
+      // Create dynamic index data from backend data
+      if (marketOverview.topTraded.length >= 3) {
         const indices: IndexData[] = [
           {
-            name: 'TECH INDEX',
-            value: processedMarketData[0]?.price * 10 || 0, // Use 0 instead of static
-            change: processedMarketData[0]?.change * 10 || 0,
-            changePercent: processedMarketData[0]?.changePercent || 0,
-            volume: '21.0K bil',
+            name: 'TOP TRADED',
+            value: marketOverview.topTraded[0]?.price || 0,
+            change: marketOverview.topTraded[0]?.changeAmount || 0,
+            changePercent: marketOverview.topTraded[0]?.changePercent || 0,
+            volume: `${(marketOverview.topTraded[0]?.volume / 1000000).toFixed(1)}M`,
             chartData: processedMarketData[0]?.chartData || []
           },
           {
-            name: 'MARKET 30',
-            value: processedMarketData[1]?.price * 8 || 1420.35,
-            change: processedMarketData[1]?.change * 8 || 19.15,
-            changePercent: processedMarketData[1]?.changePercent || 1.37,
-            volume: '10.1K bil',
-            chartData: processedMarketData[1]?.chartData || []
+            name: 'TOP GAINERS',
+            value: marketOverview.topGainers[0]?.price || 0,
+            change: marketOverview.topGainers[0]?.changeAmount || 0,
+            changePercent: marketOverview.topGainers[0]?.changePercent || 0,
+            volume: `${(marketOverview.topGainers[0]?.volume / 1000000).toFixed(1)}M`,
+            chartData: []
           },
           {
-            name: 'GROWTH INDEX',
-            value: processedMarketData[2]?.price * 2 || 245.67,
-            change: processedMarketData[2]?.change * 2 || 3.21,
-            changePercent: processedMarketData[2]?.changePercent || 1.33,
-            volume: '1.6K bil',
-            chartData: processedMarketData[2]?.chartData || []
+            name: 'TOP LOSERS',
+            value: marketOverview.topLosers[0]?.price || 0,
+            change: marketOverview.topLosers[0]?.changeAmount || 0,
+            changePercent: marketOverview.topLosers[0]?.changePercent || 0,
+            volume: `${(marketOverview.topLosers[0]?.volume / 1000000).toFixed(1)}M`,
+            chartData: []
           }
         ];
         setIndexData(indices);
@@ -122,9 +150,9 @@ export default function HomeScreen() {
       console.error('Error fetching market data:', error);
       Alert.alert('Error', 'Failed to fetch market data. Please check your internet connection.');
       
-      // Use static data service
-      const fallbackData = getStaticMarketData();
-      setMarketData(fallbackData);
+      // Show error state instead of fallback
+      setMarketData([]);
+      setIndexData([]);
     } finally {
       setLoading(false);
     }
@@ -164,13 +192,13 @@ export default function HomeScreen() {
       </View>
     </View>
   );
-
+  
   const renderStockRow = ({ item }: { item: MarketData }) => (
     <View style={styles.stockRow}>
       <Text style={[styles.stockSymbolCell, { color: '#10B981' }]}>{item.symbol}</Text>
       <Text style={styles.stockCell}>{item.price.toFixed(2)}</Text>
-      <Text style={[styles.stockCell, item.change >= 0 ? styles.positiveChange : styles.negativeChange]}>
-        {item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}
+      <Text style={[styles.stockCell, item.changeAmount >= 0 ? styles.positiveChange : styles.negativeChange]}>
+        {item.changeAmount >= 0 ? '+' : ''}{item.changeAmount.toFixed(2)}
       </Text>
       <Text style={[styles.stockCell, item.changePercent >= 0 ? styles.positiveChange : styles.negativeChange]}>
         {item.changePercent >= 0 ? '+' : ''}{item.changePercent.toFixed(2)}%
