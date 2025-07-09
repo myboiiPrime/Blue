@@ -3,7 +3,7 @@ import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, FlatLi
 import { useNavigation } from '@react-navigation/native';
 import MiniCandlestickChart from "../components/MiniCandlestickChart";
 import { useTheme } from "../utils/theme";
-import { stockService, CandlestickData } from '../services/api';
+import { stockService, CandlestickData, marketAnalyticsService } from '../services/api';
 
 // Define StockDto interface
 interface StockDto {
@@ -48,20 +48,6 @@ interface IndexData {
   chartData: CandlestickData[];
 }
 
-// Mock marketAnalyticsService for now
-const marketAnalyticsService = {
-  getMarketOverview: async (): Promise<MarketOverview> => {
-    // This should be replaced with actual backend call
-    const response = await fetch('/api/market-overview');
-    return response.json();
-  },
-  getDashboardData: async () => {
-    // This should be replaced with actual backend call
-    const response = await fetch('/api/dashboard-data');
-    return response.json();
-  }
-};
-
 export default function HomeScreen() {
   const navigation = useNavigation();
   const theme = useTheme();
@@ -78,45 +64,48 @@ export default function HomeScreen() {
     try {
       setLoading(true);
       
-      // Use backend market overview API
-      const marketOverview = await marketAnalyticsService.getMarketOverview();
+      // Use the real backend market overview API
+      const marketOverviewResponse = await marketAnalyticsService.getMarketOverview();
+      const marketOverview = marketOverviewResponse.data;
       console.log('Backend API Response:', marketOverview);
       
       const processedMarketData: MarketData[] = [];
       
       // Process topTraded stocks
-      for (const stockDto of marketOverview.topTraded) {
-        try {
-          const historicalData = await stockService.getHistoricalData(stockDto.symbol, '1day');
-          const chartData = historicalData.slice(-20);
-          
-          processedMarketData.push({
-            symbol: stockDto.symbol,
-            name: stockDto.name || stockDto.symbol,
-            price: stockDto.price,
-            changeAmount: stockDto.changeAmount,
-            changePercent: stockDto.changePercent,
-            volume: stockDto.volume,
-            chartData
-          });
-        } catch (error) {
-          console.error(`Error fetching chart data for ${stockDto.symbol}:`, error);
-          processedMarketData.push({
-            symbol: stockDto.symbol,
-            name: stockDto.name || stockDto.symbol,
-            price: stockDto.price,
-            changeAmount: stockDto.changeAmount,
-            changePercent: stockDto.changePercent,
-            volume: stockDto.volume,
-            chartData: []
-          });
+      if (marketOverview.topTraded && Array.isArray(marketOverview.topTraded)) {
+        for (const stockDto of marketOverview.topTraded) {
+          try {
+            const historicalData = await stockService.getHistoricalData(stockDto.symbol, '1day');
+            const chartData = historicalData.slice(-20);
+            
+            processedMarketData.push({
+              symbol: stockDto.symbol,
+              name: stockDto.name || stockDto.symbol,
+              price: stockDto.price,
+              changeAmount: stockDto.changeAmount,
+              changePercent: stockDto.changePercent,
+              volume: stockDto.volume,
+              chartData
+            });
+          } catch (error) {
+            console.error(`Error fetching chart data for ${stockDto.symbol}:`, error);
+            processedMarketData.push({
+              symbol: stockDto.symbol,
+              name: stockDto.name || stockDto.symbol,
+              price: stockDto.price,
+              changeAmount: stockDto.changeAmount,
+              changePercent: stockDto.changePercent,
+              volume: stockDto.volume,
+              chartData: []
+            });
+          }
         }
       }
       
       setMarketData(processedMarketData);
       
       // Create dynamic index data from backend data
-      if (marketOverview.topTraded.length >= 3) {
+      if (marketOverview.topTraded && marketOverview.topTraded.length >= 3) {
         const indices: IndexData[] = [
           {
             name: 'TOP TRADED',
@@ -128,18 +117,18 @@ export default function HomeScreen() {
           },
           {
             name: 'TOP GAINERS',
-            value: marketOverview.topGainers[0]?.price || 0,
-            change: marketOverview.topGainers[0]?.changeAmount || 0,
-            changePercent: marketOverview.topGainers[0]?.changePercent || 0,
-            volume: `${(marketOverview.topGainers[0]?.volume / 1000000).toFixed(1)}M`,
+            value: marketOverview.topGainers?.[0]?.price || 0,
+            change: marketOverview.topGainers?.[0]?.changeAmount || 0,
+            changePercent: marketOverview.topGainers?.[0]?.changePercent || 0,
+            volume: `${(marketOverview.topGainers?.[0]?.volume / 1000000).toFixed(1)}M`,
             chartData: []
           },
           {
             name: 'TOP LOSERS',
-            value: marketOverview.topLosers[0]?.price || 0,
-            change: marketOverview.topLosers[0]?.changeAmount || 0,
-            changePercent: marketOverview.topLosers[0]?.changePercent || 0,
-            volume: `${(marketOverview.topLosers[0]?.volume / 1000000).toFixed(1)}M`,
+            value: marketOverview.topLosers?.[0]?.price || 0,
+            change: marketOverview.topLosers?.[0]?.changeAmount || 0,
+            changePercent: marketOverview.topLosers?.[0]?.changePercent || 0,
+            volume: `${(marketOverview.topLosers?.[0]?.volume / 1000000).toFixed(1)}M`,
             chartData: []
           }
         ];

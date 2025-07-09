@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class CustomUserDetailsServiceImplementation implements UserDetailsService {
@@ -20,11 +21,12 @@ public class CustomUserDetailsServiceImplementation implements UserDetailsServic
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(username);
+        Optional<User> userOptional = userRepository.findByEmail(username);
 
-        if(user == null || user.isLogin_with_google() || user.isLogin_with_facebook()) {
-            throw new UsernameNotFoundException("Username not found with email" + username);
+        if(userOptional.isEmpty()) {
+            throw new UsernameNotFoundException("Username not found with email: " + username);
         }
+        User user = userOptional.get();
         List<GrantedAuthority> authorities = new ArrayList<>();
         return new org.springframework.security.core.userdetails.User(user.getEmail(), user.getPassword(), authorities);
     }

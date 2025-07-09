@@ -9,6 +9,7 @@ import org.springframework.web.client.RestTemplate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class AlphaVantageService {
@@ -45,23 +46,39 @@ public class AlphaVantageService {
         return stock;
     }
 
-    public Stock searchStock(String keywords) {
+    public List<Stock> searchStocks(String keywords) {
         String url = config.getBaseUrl() + "?function=SYMBOL_SEARCH&keywords=" + keywords + "&apikey=" + config.getApiKey();
         
         Map<String, Object> response = restTemplate.getForObject(url, Map.class);
         List<Map<String, String>> matches = (List<Map<String, String>>) response.get("bestMatches");
         
         if (matches == null || matches.isEmpty()) {
+            return List.of();
+        }
+        
+        return matches.stream().map(match -> {
+            Stock stock = new Stock();
+            stock.setSymbol(match.get("1. symbol"));
+            stock.setName(match.get("2. name"));
+
+            try {
+                stock.setPrice(Double.parseDouble(match.getOrDefault("9. matchScore", "0")));
+                stock.setLastUpdated(LocalDateTime.now());
+            } catch (NumberFormatException e) {
+                stock.setPrice(0);
+            }
+            
+            return stock;
+        }).collect(Collectors.toList());
+    }
+
+    public Stock searchStock(String keywords) {
+        List<Stock> stocks = searchStocks(keywords);
+        if (stocks.isEmpty()) {
             return null;
         }
         
-        Map<String, String> bestMatch = matches.get(0);
-        
-        Stock stock = new Stock();
-        stock.setSymbol(bestMatch.get("1. symbol"));
-        stock.setName(bestMatch.get("2. name"));
-        
-        // Get the current price and other details
-        return getStockQuote(stock.getSymbol());
+        Stock bestMatch = stocks.get(0);
+        return getStockQuote(bestMatch.getSymbol());
     }
 }

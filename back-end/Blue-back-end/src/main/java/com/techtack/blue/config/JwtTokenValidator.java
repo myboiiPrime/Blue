@@ -1,12 +1,10 @@
 package com.techtack.blue.config;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.List;
+
+import javax.crypto.SecretKey;
+
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -15,9 +13,13 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.crypto.SecretKey;
-import java.io.IOException;
-import java.util.List;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 public class JwtTokenValidator extends OncePerRequestFilter {
 
@@ -27,18 +29,17 @@ public class JwtTokenValidator extends OncePerRequestFilter {
         
         String jwt = request.getHeader(JwtConstant.JWT_HEADER);
         
-        if (jwt != null) {
+        if (jwt != null && jwt.startsWith("Bearer ")) {
             try {
-                // Remove "Bearer " prefix
                 jwt = jwt.substring(7);
                 
                 SecretKey key = Keys.hmacShaKeyFor(JwtConstant.SECRET_KEY.getBytes());
                 
                 Claims claims = Jwts.parser()
-                        .setSigningKey(key)
+                        .verifyWith(key)
                         .build()
                         .parseClaimsJws(jwt)
-                        .getBody();
+                        .getPayload();
                 
                 String email = String.valueOf(claims.get("email"));
                 
@@ -49,8 +50,10 @@ public class JwtTokenValidator extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
                 
             } catch (Exception e) {
-                throw new BadCredentialsException("Invalid token received");
-            }
+                // For public endpoints, we don't throw an exception if JWT is invalid
+                // Let Spring Security handle authorization based on endpoint configuration
+                SecurityContextHolder.clearContext();
+             }
         }
         
         filterChain.doFilter(request, response);

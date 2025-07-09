@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/user-stocks")
+@RequestMapping("/user-stocks")
 public class UserStockController {
 
     @Autowired
@@ -23,19 +23,22 @@ public class UserStockController {
     private UserService userService;
 
     @GetMapping("/portfolio")
-    public ResponseEntity<List<UserStockDto>> getUserPortfolio(@RequestHeader("Authorization") String jwt) {
-        User user = userService.findUserProfileByJwt(jwt);
-        List<UserStockDto> portfolio = userStockService.getUserStocks(user.getId());
-        return new ResponseEntity<>(portfolio, HttpStatus.OK);
+    public ResponseEntity<?> getUserPortfolio() {
+        try {
+            User user = userService.findUserProfileByJwt(null);
+            List<UserStockDto> portfolio = userStockService.getUserStocks(user.getId());
+            return new ResponseEntity<>(portfolio, HttpStatus.OK);
+        } catch (UserException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
     }
 
     @PostMapping("/buy")
     public ResponseEntity<?> buyStock(
-            @RequestHeader("Authorization") String jwt,
             @RequestParam String symbol,
             @RequestParam int quantity) {
         try {
-            User user = userService.findUserProfileByJwt(jwt);
+            User user = userService.findUserProfileByJwt(null);
             UserStockDto userStock = userStockService.buyStock(user.getId(), symbol, quantity);
             return new ResponseEntity<>(userStock, HttpStatus.OK);
         } catch (UserException e) {
@@ -45,11 +48,10 @@ public class UserStockController {
 
     @PostMapping("/sell")
     public ResponseEntity<?> sellStock(
-            @RequestHeader("Authorization") String jwt,
             @RequestParam String symbol,
             @RequestParam int quantity) {
         try {
-            User user = userService.findUserProfileByJwt(jwt);
+            User user = userService.findUserProfileByJwt(null);
             UserStockDto userStock = userStockService.sellStock(user.getId(), symbol, quantity);
             return new ResponseEntity<>(userStock != null ? userStock : "Stock sold successfully", HttpStatus.OK);
         } catch (UserException e) {

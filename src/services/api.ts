@@ -20,11 +20,7 @@ export interface UserDto {
   createdAt?: string;
 }
 
-// Alpha Vantage API configuration
-const ALPHA_VANTAGE_API_KEY = 'TW10G2S77NID2ZCA';
-const ALPHA_VANTAGE_API_URL = 'https://www.alphavantage.co/query';
-
-const API_URL = 'https://7915-115-72-73-134.ngrok-free.app';
+const API_URL = 'http://73536df3dd33.ngrok-free.app';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -32,12 +28,6 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'ngrok-skip-browser-warning': 'true'
   },
-});
-
-// Alpha Vantage API instance
-const alphaVantageApi = axios.create({
-  baseURL: ALPHA_VANTAGE_API_URL,
-  timeout: 10000,
 });
 
 // JWT interceptor
@@ -68,7 +58,6 @@ export interface CandlestickData {
 export type TimeRange = '1day' | '1week' | '30days';
 export type DataInterval = '5min' | '60min' | 'daily';
 
-// Stock API service using Alpha Vantage
 // Cache keys
 const CACHE_KEYS = {
   MARKET_OVERVIEW: 'market_overview',
@@ -87,9 +76,6 @@ interface CacheData<T> {
 
 // Define the stockService interface first
 interface StockService {
-  getStockQuote: (symbol: string) => Promise<any>;
-  searchStock: (keywords: string) => Promise<any>;
-  getIntradayData: (symbol: string, interval?: '1min' | '5min' | '15min' | '30min' | '60min') => Promise<CandlestickData[]>;
   getHistoricalData: (symbol: string, timeRange: TimeRange) => Promise<CandlestickData[]>;
   getMarketOverview: () => Promise<any[]>;
   getMarketOverviewWithHistory: (timeRange: TimeRange) => Promise<{symbol: string, data: CandlestickData[]}[]>;
@@ -97,77 +83,8 @@ interface StockService {
   getCacheData: <T>(key: string, expiryTime: number) => Promise<T | null>;
 }
 
-// Implement the stockService
+// Implement the stockService with mock data only
 export const stockService: StockService = {
-  getStockQuote: async (symbol: string) => {
-    try {
-      const response = await alphaVantageApi.get('', {
-        params: {
-          function: 'GLOBAL_QUOTE',
-          symbol: symbol,
-          apikey: ALPHA_VANTAGE_API_KEY
-        }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching stock quote:', error);
-      throw error;
-    }
-  },
-  
-  searchStock: async (keywords: string) => {
-    try {
-      const response = await alphaVantageApi.get('', {
-        params: {
-          function: 'SYMBOL_SEARCH',
-          keywords: keywords,
-          apikey: ALPHA_VANTAGE_API_KEY
-        }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error searching stocks:', error);
-      throw error;
-    }
-  },
-  
-  getIntradayData: async (symbol: string, interval: '1min' | '5min' | '15min' | '30min' | '60min' = '5min') => {
-    try {
-      const response = await alphaVantageApi.get('', {
-        params: {
-          function: 'TIME_SERIES_INTRADAY',
-          symbol: symbol,
-          interval: interval,
-          apikey: ALPHA_VANTAGE_API_KEY,
-          outputsize: 'compact' // Get last 100 data points
-        }
-      });
-      
-      const timeSeries = response.data[`Time Series (${interval})`];
-      if (!timeSeries) {
-        throw new Error('No intraday data available');
-      }
-      
-      // Convert to our candlestick format
-      const candlesticks: CandlestickData[] = Object.entries(timeSeries)
-        .map(([timestamp, data]: [string, any]) => ({
-          timestamp,
-          open: parseFloat(data['1. open']),
-          high: parseFloat(data['2. high']),
-          low: parseFloat(data['3. low']),
-          close: parseFloat(data['4. close']),
-          volume: parseInt(data['5. volume'])
-        }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      
-      return candlesticks;
-    } catch (error) {
-      console.error('Error fetching intraday data:', error);
-      // Return mock data as fallback
-      return generateMockCandlestickData();
-    }
-  },
-  
   getHistoricalData: async (symbol: string, timeRange: TimeRange): Promise<CandlestickData[]> => {
     try {
       const cacheKey = `${CACHE_KEYS.HISTORICAL_DATA}${symbol}_${timeRange}`;
@@ -178,82 +95,14 @@ export const stockService: StockService = {
         return cachedData;
       }
 
-      // If no cache or expired, fetch fresh data
-      let functionType: string;
-      let interval: string;
+      // Generate mock data with realistic base price for the symbol
+      const basePrice = symbol === 'VN30' ? 1442.97 : 150;
+      const mockData = generateMockCandlestickData(symbol, basePrice);
       
-      switch (timeRange) {
-        case '1day':
-          functionType = 'TIME_SERIES_INTRADAY';
-          interval = '5min';
-          break;
-        case '1week':
-          functionType = 'TIME_SERIES_INTRADAY';
-          interval = '60min';
-          break;
-        case '30days':
-          functionType = 'TIME_SERIES_DAILY';
-          interval = 'daily';
-          break;
-        default:
-          functionType = 'TIME_SERIES_INTRADAY';
-          interval = '5min';
-      }
+      // Cache the mock data
+      await stockService.setCacheData(cacheKey, mockData);
       
-      const params: any = {
-        function: functionType,
-        symbol: symbol,
-        apikey: ALPHA_VANTAGE_API_KEY,
-        outputsize: 'compact'
-      };
-      
-      if (functionType === 'TIME_SERIES_INTRADAY') {
-        params.interval = interval;
-      }
-      
-      console.log(`Fetching data for ${symbol} with params:`, params);
-      const response = await alphaVantageApi.get('', { params });
-      
-      // Add detailed logging
-      console.log(`API Response for ${symbol}:`, response.data);
-      
-      // Check for API error messages
-      // Check for API error messages
-      if (response.data['Error Message']) {
-        throw new Error(`API Error: ${response.data['Error Message']}`);
-      }
-      
-      if (response.data['Note']) {
-        throw new Error(`API Rate Limit: ${response.data['Note']}`);
-      }
-      
-      let timeSeries: any;
-      if (functionType === 'TIME_SERIES_INTRADAY') {
-        timeSeries = response.data[`Time Series (${interval})`];
-      } else {
-        timeSeries = response.data['Time Series (Daily)'];
-      }
-      
-      if (!timeSeries) {
-        console.error(`No time series data found for ${symbol}. Available keys:`, Object.keys(response.data));
-        throw new Error(`No historical data available for ${symbol}`);
-      }
-      
-      const candlesticks: CandlestickData[] = Object.entries(timeSeries)
-        .map(([timestamp, data]: [string, any]) => ({
-          timestamp,
-          open: parseFloat(data['1. open']),
-          high: parseFloat(data['2. high']),
-          low: parseFloat(data['3. low']),
-          close: parseFloat(data['4. close']),
-          volume: parseInt(data['5. volume'])
-        }))
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-      
-      // Cache the fresh data
-      await stockService.setCacheData(cacheKey, candlesticks);
-      
-      return candlesticks;
+      return mockData;
     } catch (error) {
       console.error(`Error fetching historical data for ${symbol}:`, error);
       // Generate mock data with realistic base price for the symbol
@@ -270,26 +119,19 @@ export const stockService: StockService = {
         return cachedData;
       }
 
-      // If no cache or expired, fetch fresh data
-      const symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META'];
-      const quotes = await Promise.all(
-        symbols.map(symbol =>
-          alphaVantageApi.get('', {
-            params: {
-              function: 'GLOBAL_QUOTE',
-              symbol,
-              apikey: ALPHA_VANTAGE_API_KEY
-            }
-          })
-        )
-      );
-
-      const marketData = quotes.map(response => response.data);
+      // Return mock market data
+      const mockMarketData = [
+        { symbol: 'AAPL', price: 175.50, change: 2.30, changePercent: 1.33 },
+        { symbol: 'MSFT', price: 420.80, change: -1.20, changePercent: -0.28 },
+        { symbol: 'GOOGL', price: 2850.00, change: 15.75, changePercent: 0.56 },
+        { symbol: 'AMZN', price: 3200.00, change: -8.50, changePercent: -0.26 },
+        { symbol: 'META', price: 485.20, change: 12.40, changePercent: 2.62 }
+      ];
       
-      // Cache the fresh data
-      await stockService.setCacheData(CACHE_KEYS.MARKET_OVERVIEW, marketData);
+      // Cache the mock data
+      await stockService.setCacheData(CACHE_KEYS.MARKET_OVERVIEW, mockMarketData);
       
-      return marketData;
+      return mockMarketData;
     } catch (error) {
       console.error('Error fetching market overview:', error);
       throw error;
@@ -511,57 +353,56 @@ export interface StockSearchDto {
 
 // 2. Advanced Order Types Service
 export const tradingService = {
-  // Place different order types
-  placeNormalOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-normal-order', orderData),
+  // Place different order types - Fixed endpoints
+  placeNormalOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/normal', orderData, { params: { userId } }),
   
-  placeStopOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-stop-order', orderData),
+  placeStopOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/stop', orderData, { params: { userId } }),
   
-  placeStopLimitOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-stop-limit-order', orderData),
+  placeStopLimitOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/stop-limit', orderData, { params: { userId } }),
   
-  placeTrailingStopOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-trailing-stop-order', orderData),
+  placeTrailingStopOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/trailing-stop', orderData, { params: { userId } }),
   
-  placeTrailingStopLimitOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-trailing-stop-limit-order', orderData),
+  placeTrailingStopLimitOrder: (orderData: {symbol: string, quantity: number, trailAmount: number, limitPrice: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/trailing-stop-limit', orderData, { params: { userId } }),
   
-  placeOCOOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-oco-order', orderData),
+  placeOCOOrder: (orderData: {symbol: string, quantity: number, stopPrice: number, limitPrice: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/oco', orderData, { params: { userId } }),
   
-  placeGTDOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL', expiryDate: string}) => 
-    api.post('/trading/place-gtd-order', orderData),
+  placeGTDOrder: (orderData: {symbol: string, quantity: number, price: number, side: 'BUY' | 'SELL', expiryDate: string}, userId: number) => 
+    api.post('/trading/orders/gtd', orderData, { params: { userId } }),
   
-  placeStopLossTakeProfitOrder: (orderData: {symbol: string, quantity: number, stopLossPrice: number, takeProfitPrice: number, side: 'BUY' | 'SELL'}) => 
-    api.post('/trading/place-stop-loss-take-profit-order', orderData),
+  placeStopLossTakeProfitOrder: (orderData: {symbol: string, quantity: number, stopLossPrice: number, takeProfitPrice: number, side: 'BUY' | 'SELL'}, userId: number) => 
+    api.post('/trading/orders/stop-loss-take-profit', orderData, { params: { userId } }),
   
-  // Order management
-  getOpenOrders: () => api.get<OrderDto[]>('/trading/orders/open'),
+  // Generic order placement
+  placeOrder: (orderData: any, userId: number) => 
+    api.post('/trading/orders', orderData, { params: { userId } }),
   
-  getOrdersByType: (orderType: string) => api.get<OrderDto[]>(`/trading/orders/by-type/${orderType}`),
+  // Order management - Fixed endpoints
+  getUserOrders: (userId: number) => 
+    api.get<OrderDto[]>('/trading/orders', { params: { userId } }),
   
-  getOrdersByStatus: (status: string) => api.get<OrderDto[]>(`/trading/orders/by-status/${status}`),
+  getOpenOrders: (userId: number) => 
+    api.get<OrderDto[]>('/trading/orders/open', { params: { userId } }),
   
-  getOrderById: (orderId: string) => api.get<OrderDto>(`/trading/orders/${orderId}`),
+  getOrdersByType: (userId: number, orderType: string) => 
+    api.get<OrderDto[]>(`/trading/orders/type/${orderType}`, { params: { userId } }),
   
-  cancelOrder: (orderId: string) => api.delete(`/trading/orders/${orderId}/cancel`),
+  getOrdersByStatus: (userId: number, status: string) => 
+    api.get<OrderDto[]>(`/trading/orders/status/${status}`, { params: { userId } }),
   
-  // Get available options
-  getOrderTypes: () => api.get<string[]>('/trading/order-types'),
+  getOrdersByStatusAndType: (userId: number, status: string, orderType: string) => 
+    api.get<OrderDto[]>(`/trading/orders/status/${status}/type/${orderType}`, { params: { userId } }),
   
-  getOrderSides: () => api.get<string[]>('/trading/order-sides'),
+  getOrderById: (userId: number, orderId: string) => 
+    api.get<OrderDto>(`/trading/orders/${orderId}`, { params: { userId } }),
   
-  getOrderStatuses: () => api.get<string[]>('/trading/order-statuses'),
-  
-  // Trading records
-  getTradingRecordsByAccount: (accountId: string) => api.get(`/trading/records/account/${accountId}`),
-  
-  getTradingRecordsBySymbol: (symbol: string) => api.get(`/trading/records/symbol/${symbol}`),
-  
-  getTradingRecordsByType: (type: string) => api.get(`/trading/records/type/${type}`),
-  
-  getTradingRecordsByStatus: (status: string) => api.get(`/trading/records/status/${status}`)
+  cancelOrder: (userId: number, orderId: string) => 
+    api.post(`/trading/orders/${orderId}/cancel`, null, { params: { userId } })
 };
 
 // 3. Market Analytics Service
@@ -614,10 +455,11 @@ export const enhancedSearchService = {
 };
 
 // Replace the mock userStockService with real backend integration
+// Fixed Portfolio Service
 export const realPortfolioService = {
   getUserPortfolio: async (): Promise<{data: UserStockDto[]}> => {
     try {
-      const response = await api.get('/api/user-stocks/portfolio');
+      const response = await api.get('/user-stocks/portfolio');
       return { data: response.data };
     } catch (error) {
       console.error('Error fetching portfolio:', error);
@@ -627,7 +469,7 @@ export const realPortfolioService = {
   
   buyStock: async (symbol: string, quantity: number): Promise<{data: UserStockDto}> => {
     try {
-      const response = await api.post('/api/user-stocks/buy', null, {
+      const response = await api.post('/user-stocks/buy', null, {
         params: { symbol, quantity }
       });
       return { data: response.data };
@@ -639,7 +481,7 @@ export const realPortfolioService = {
   
   sellStock: async (symbol: string, quantity: number): Promise<{data: UserStockDto}> => {
     try {
-      const response = await api.post('/api/user-stocks/sell', null, {
+      const response = await api.post('/user-stocks/sell', null, {
         params: { symbol, quantity }
       });
       return { data: response.data };
@@ -650,45 +492,104 @@ export const realPortfolioService = {
   }
 };
 
-// Remove the old mock userStockService
+// Enhanced User Service with correct endpoints
 export const enhancedUserService = {
-  getUserProfile: () => api.get<UserDto>('/api/users/profile'),
+  getUserById: (userId: number) => 
+    api.get<UserDto>(`/users/${userId}`),
   
-  // Additional user endpoints if needed
-  updateUserProfile: (userData: Partial<UserDto>) => api.put('/api/users/profile', userData)
+  updateUser: (userId: number, userData: Partial<UserDto>) => 
+    api.put<UserDto>(`/users/${userId}`, userData),
+  
+  deleteUser: (userId: number) => 
+    api.delete<string>(`/users/${userId}`)
 };
 
-// Watchlist Service
+// Watchlist interfaces
+export interface WatchlistDto {
+  id: string;
+  name: string;
+  description?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface WatchlistItemDto {
+  id: string;
+  stockId: string;
+  symbol: string;
+  addedAt: string;
+}
+
+// Fixed Watchlist Service
 export const watchlistService = {
-  // Create watchlist
-  createWatchlist: (watchlistData: {name: string, description?: string}) => 
-    api.post('/watchlists', watchlistData),
+  createWatchlist: (watchlistData: {name: string, description?: string}, userId: number) => 
+    api.post<WatchlistDto>('/watchlists', watchlistData, { params: { userId } }),
   
-  // Add stock to watchlist
-  addStockToWatchlist: (watchlistId: string, symbol: string) => 
-    api.post(`/watchlists/${watchlistId}/stocks`, { symbol }),
+  getUserWatchlists: (userId: number) => 
+    api.get<WatchlistDto[]>('/watchlists', { params: { userId } }),
   
-  // Remove stock from watchlist
-  removeStockFromWatchlist: (watchlistId: string, symbol: string) => 
-    api.delete(`/watchlists/${watchlistId}/stocks/${symbol}`),
+  getWatchlistById: (watchlistId: string, userId: number) => 
+    api.get<WatchlistDto>(`/watchlists/${watchlistId}`, { params: { userId } }),
   
-  // Get watchlist symbols
-  getWatchlistSymbols: (watchlistId: string) => 
-    api.get<string[]>(`/watchlists/${watchlistId}/symbols`),
+  updateWatchlist: (watchlistId: string, watchlistData: {name?: string, description?: string}, userId: number) => 
+    api.put<WatchlistDto>(`/watchlists/${watchlistId}`, watchlistData, { params: { userId } }),
   
-  // Get watchlist items with details
-  getWatchlistItems: (watchlistId: string) => 
-    api.get(`/watchlists/${watchlistId}/items`),
+  deleteWatchlist: (watchlistId: string, userId: number) => 
+    api.delete(`/watchlists/${watchlistId}`, { params: { userId } }),
   
-  // Get user's watchlists
-  getUserWatchlists: (userId: string) => 
-    api.get(`/watchlists/user/${userId}`),
+  addStockToWatchlist: (watchlistId: string, stockId: number, userId: number) => 
+    api.post<WatchlistItemDto>(`/watchlists/${watchlistId}/stocks`, null, { 
+      params: { stockId, userId } 
+    }),
   
-  // Update watchlist
-  updateWatchlist: (watchlistId: string, watchlistData: {name?: string, description?: string}) => 
-    api.put(`/watchlists/${watchlistId}`, watchlistData),
+  removeStockFromWatchlist: (watchlistId: string, stockItemId: string, userId: number) => 
+    api.delete(`/watchlists/${watchlistId}/stocks/${stockItemId}`, { params: { userId } }),
   
-  // Delete watchlist
-  deleteWatchlist: (watchlistId: string) => 
-    api.delete(`/watchlists/${watchlistId}`)
+  getWatchlistItems: (watchlistId: string, userId: number) => 
+    api.get<WatchlistItemDto[]>(`/watchlists/${watchlistId}/stocks`, { params: { userId } })
+};
+
+// Authentication interfaces
+export interface SignupRequest {
+  email: string;
+  username: string;
+  password: string;
+  mobile?: string;
+}
+
+export interface SigninRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  jwt?: string;
+  message: string;
+}
+
+export interface ChangePasswordRequest {
+  email: string;
+  newPassword: string;
+}
+
+// Enhanced Authentication Service
+export const authService = {
+  signup: (userData: SignupRequest) => 
+    api.post<AuthResponse>('/auth/signup', userData),
+  
+  signin: (credentials: SigninRequest) => 
+    api.post<AuthResponse>('/auth/signin', credentials),
+  
+  verifyEmail: (token: string) => 
+    api.get<string>(`/auth/verify?token=${token}`),
+  
+  forgotPassword: (email: string) => 
+    api.post<AuthResponse>('/auth/forgot-password', { email }),
+  
+  changePassword: (data: ChangePasswordRequest) => 
+    api.post<AuthResponse>('/auth/change-password', data),
+  
+  verifyPasswordChange: (token: string) => 
+    api.get<string>(`/auth/verify-password-change?token=${token}`)
 };

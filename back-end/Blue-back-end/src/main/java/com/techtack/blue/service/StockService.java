@@ -48,6 +48,26 @@ public class StockService {
         return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
     }
 
+    public List<StockDto> searchStocks(String query) {
+        List<Stock> stocks = alphaVantageService.searchStocks(query);
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
+    }
+    
+    public List<StockDto> getStocksByIndustry(String industry) {
+        List<Stock> stocks = stockRepository.findByIndustry(industry);
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
+    }
+    
+    public List<StockDto> getStocksByMarketCapRange(double minMarketCap, double maxMarketCap) {
+        List<Stock> stocks = stockRepository.findByMarketCapRange(minMarketCap, maxMarketCap);
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
+    }
+
+    public List<StockDto> getAllStocks() {
+        List<Stock> stocks = stockRepository.findAll();
+        return stocks.stream().map(this::convertToDto).collect(Collectors.toList());
+    }
+
     private StockDto convertToDto(Stock stock) {
         StockDto dto = new StockDto();
         dto.setId(stock.getId());
@@ -60,6 +80,8 @@ public class StockService {
         dto.setPreviousClose(stock.getPreviousClose());
         dto.setVolume(stock.getVolume());
         dto.setLastUpdated(stock.getLastUpdated());
+        dto.setIndustry(stock.getIndustry());
+        dto.setMarketCap(stock.getMarketCap());
         
         // Calculate change amount and percentage
         double changeAmount = stock.getPrice() - stock.getPreviousClose();

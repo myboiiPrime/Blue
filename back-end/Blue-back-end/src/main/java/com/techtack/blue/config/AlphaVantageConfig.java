@@ -1,13 +1,16 @@
 package com.techtack.blue.config;
 
-public class AlphaVantageConfig {
-    private String apiKey;
-    private String baseUrl;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
-    public AlphaVantageConfig() {
-        this.apiKey = "YOUR_API_KEY";
-        this.baseUrl = "https://www.alphavantage.co/query";
-    }
+@Component
+public class AlphaVantageConfig {
+    
+    @Value("${alphavantage.api.key}")
+    private String apiKey;
+    
+    @Value("${alphavantage.api.url}")
+    private String baseUrl;
 
     public String getApiKey() {
         return apiKey;

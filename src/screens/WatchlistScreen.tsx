@@ -35,31 +35,34 @@ export default function WatchlistScreen() {
       
       // Fetch market overview for indices
       try {
-        const marketOverview = await marketAnalyticsService.getMarketOverview();
+        const marketOverviewResponse = await marketAnalyticsService.getMarketOverview();
+        const marketOverview = marketOverviewResponse.data;
+        
+        // Add null checks for the arrays
         const dynamicIndices = [
           {
             symbol: 'TOP TRADED',
-            value: marketOverview.topTraded[0]?.price.toFixed(2) || '0.00',
-            volume: `${(marketOverview.topTraded[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
-            change: `${marketOverview.topTraded[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topTraded[0]?.changeAmount.toFixed(2)}`,
-            changePercent: `(${marketOverview.topTraded[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topTraded[0]?.changePercent.toFixed(2)}%)`,
-            isPositive: marketOverview.topTraded[0]?.changeAmount >= 0
+            value: marketOverview?.topTraded?.[0]?.price?.toFixed(2) || '0.00',
+            volume: `${(marketOverview?.topTraded?.[0]?.volume / 1000000)?.toFixed(1) || '0.0'}M`,
+            change: `${marketOverview?.topTraded?.[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview?.topTraded?.[0]?.changeAmount?.toFixed(2) || '0.00'}`,
+            changePercent: `(${marketOverview?.topTraded?.[0]?.changePercent >= 0 ? '+' : ''}${marketOverview?.topTraded?.[0]?.changePercent?.toFixed(2) || '0.00'}%)`,
+            isPositive: marketOverview?.topTraded?.[0]?.changeAmount >= 0
           },
           {
             symbol: 'TOP GAINERS',
-            value: marketOverview.topGainers[0]?.price.toFixed(2) || '0.00',
-            volume: `${(marketOverview.topGainers[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
-            change: `${marketOverview.topGainers[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topGainers[0]?.changeAmount.toFixed(2)}`,
-            changePercent: `(${marketOverview.topGainers[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topGainers[0]?.changePercent.toFixed(2)}%)`,
-            isPositive: marketOverview.topGainers[0]?.changeAmount >= 0
+            value: marketOverview?.topGainers?.[0]?.price?.toFixed(2) || '0.00',
+            volume: `${(marketOverview?.topGainers?.[0]?.volume / 1000000)?.toFixed(1) || '0.0'}M`,
+            change: `${marketOverview?.topGainers?.[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview?.topGainers?.[0]?.changeAmount?.toFixed(2) || '0.00'}`,
+            changePercent: `(${marketOverview?.topGainers?.[0]?.changePercent >= 0 ? '+' : ''}${marketOverview?.topGainers?.[0]?.changePercent?.toFixed(2) || '0.00'}%)`,
+            isPositive: marketOverview?.topGainers?.[0]?.changeAmount >= 0
           },
           {
             symbol: 'TOP LOSERS',
-            value: marketOverview.topLosers[0]?.price.toFixed(2) || '0.00',
-            volume: `${(marketOverview.topLosers[0]?.volume / 1000000).toFixed(1)}M` || '0.0M',
-            change: `${marketOverview.topLosers[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview.topLosers[0]?.changeAmount.toFixed(2)}`,
-            changePercent: `(${marketOverview.topLosers[0]?.changePercent >= 0 ? '+' : ''}${marketOverview.topLosers[0]?.changePercent.toFixed(2)}%)`,
-            isPositive: marketOverview.topLosers[0]?.changeAmount >= 0
+            value: marketOverview?.topLosers?.[0]?.price?.toFixed(2) || '0.00',
+            volume: `${(marketOverview?.topLosers?.[0]?.volume / 1000000)?.toFixed(1) || '0.0'}M`,
+            change: `${marketOverview?.topLosers?.[0]?.changeAmount >= 0 ? '+' : ''}${marketOverview?.topLosers?.[0]?.changeAmount?.toFixed(2) || '0.00'}`,
+            changePercent: `(${marketOverview?.topLosers?.[0]?.changePercent >= 0 ? '+' : ''}${marketOverview?.topLosers?.[0]?.changePercent?.toFixed(2) || '0.00'}%)`,
+            isPositive: marketOverview?.topLosers?.[0]?.changeAmount >= 0
           }
         ];
         setMarketIndices(dynamicIndices);
@@ -373,3 +376,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+// Add actual watchlist management:
+const [watchlists, setWatchlists] = useState([]);
+
+const loadWatchlists = async () => {
+  try {
+    const response = await watchlistService.getUserWatchlists(userId);
+    setWatchlists(response.data);
+  } catch (error) {
+    console.error('Error loading watchlists:', error);
+  }
+};

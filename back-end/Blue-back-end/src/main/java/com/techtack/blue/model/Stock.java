@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 public class Stock {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String symbol;
@@ -23,6 +23,10 @@ public class Stock {
     private double previousClose;
     private long volume;
     private LocalDateTime lastUpdated;
+    private String industry;
+    private double marketCap;
+    private double change;
+    private double changePercent;
 
     public Stock() {
     }
@@ -107,5 +111,35 @@ public class Stock {
         this.lastUpdated = lastUpdated;
     }
 
-    // Add getters and setters
+    public String getIndustry() {
+        return industry;
+    }
+
+    public void setIndustry(String industry) {
+        this.industry = industry;
+    }
+
+    public double getMarketCap() {
+        return marketCap;
+    }
+
+    public void setMarketCap(double marketCap) {
+        this.marketCap = marketCap;
+    }
+
+    public double getChange() {
+        return change;
+    }
+
+    public void setChange(double change) {
+        this.change = change;
+    }
+
+    public double getChangePercent() {
+        return changePercent;
+    }
+
+    public void setChangePercent(double changePercent) {
+        this.changePercent = changePercent;
+    }
 }

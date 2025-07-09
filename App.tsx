@@ -1,51 +1,36 @@
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-
-// Import your screens
-import WelcomeScreen from './app/index';
-import LoginScreen from './src/screens/Auth/LoginScreen';
-import RegisterScreen from './src/screens/Auth/RegisterScreen';
-import SettingsScreen from './src/screens/SettingsScreen';
 import TabNavigator from './src/navigation/TabNavigator';
-import Portfoliointernal from './src/components/Portfoliointernal';
-
-// Import Settings Provider and ThemeProvider
+import { notificationService } from './src/services/notificationService';
 import { SettingsProvider } from './src/context/SettingsContext';
-import ThemeProvider from './src/components/ThemeProvider';
 
-// Create the stack navigator
-const Stack = createNativeStackNavigator();
+const App: React.FC = () => {
+  useEffect(() => {
+    // Safe initialization - won't crash if Firebase isn't configured
+    const initNotifications = async () => {
+      try {
+        const isInitialized = await notificationService.initialize();
+        if (isInitialized) {
+          console.log('Notifications ready!');
+          await notificationService.setupBasicNotifications();
+        } else {
+          console.log('Notifications will be configured later');
+        }
+      } catch (error) {
+        console.log('Notification initialization skipped:', error);
+      }
+    };
+    
+    initNotifications();
+  }, []);
 
-const App = () => {
   return (
     <SettingsProvider>
-      <ThemeProvider>
-        <NavigationContainer>
-          <Stack.Navigator 
-            initialRouteName="Welcome"
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen name="Welcome" component={WelcomeScreen} />
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen name="MainApp" component={TabNavigator} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="PortfolioInternal" component={Portfoliointernal} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </ThemeProvider>
+      <NavigationContainer>
+        <TabNavigator />
+      </NavigationContainer>
     </SettingsProvider>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
 
 export default App;

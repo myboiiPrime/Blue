@@ -14,6 +14,7 @@ import {
 import CandlestickBackground from '../../components/CandlestickBackground';
 import api from '../../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authService } from '../../services/api';
 
 interface LoginScreenProps {
   navigation: any;
@@ -24,33 +25,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Add import:
+  import { authService } from '../../services/api';
+  
+  // Replace handleLogin with:
   const handleLogin = async () => {
-    // Validate inputs
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
-
-    setIsLoading(true);
-    
     try {
-      const response = await api.post('/auth/signin', {
-        email,
-        password
-      });
-      
-      setIsLoading(false);
-      
-      if (response.data && response.data.jwt) {
+      const response = await authService.signin({ email, password });
+      if (response.data?.jwt) {
         await AsyncStorage.setItem('token', response.data.jwt);
         navigation.navigate('MainApp');
-      } else {
-        Alert.alert('Error', 'Login failed');
       }
     } catch (error) {
-      setIsLoading(false);
-      console.error('Login error:', error);
-      Alert.alert('Error', 'Invalid credentials or server error');
+      Alert.alert('Error', 'Invalid credentials');
     }
   };
 
